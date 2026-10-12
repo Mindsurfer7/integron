@@ -47,6 +47,21 @@ export class DurableOrchestrator {
       const run = await tx.workflowRun.create({
         data: { id, goal: goal.trim(), clarificationId: randomUUID(), transport, targetChatId }
       });
+      // Persist stable target identity once. Mock organizations are fixtures;
+      // non-mock recipients are only explicitly allowlisted test chats.
+      const targetSpecs = transport === 'mock'
+        ? demoOrganizations.map(org => ({
+            sourceKey: org.id, label: org.name, channel: org.channel,
+            recipientId: null, origin: 'mock_fixture'
+          }))
+        : [{ sourceKey: 'consented-test-recipient', label: 'Разрешённый тестовый собеседник',
+          channel: transport, recipientId: targetChatId, origin: 'explicit_test_allowlist' }];
+      const targetRows = targetSpecs.map(target => ({ ...target, id: randomUUID(), workflowId: id }));
+      await tx.workflowTarget.createMany({ data: targetRows });
+      await tx.workflowConversation.createMany({ data: targetRows.map(target => ({
+        workflowId: id, targetId: target.id, channel: target.channel,
+        state: transport === 'mock' ? 'mock_simulation' : 'planned'
+      })) });
       await tx.workflowEvent.create({ data: { workflowId: id, kind: 'created' } });
       return run;
     });
@@ -71,7 +86,9 @@ export class DurableOrchestrator {
       include: { events: { orderBy: { createdAt: 'asc' } },
         delivery: true, messages: { orderBy: { createdAt: 'asc' } },
         facts: { orderBy: { createdAt: 'asc' } },
-        costs: { orderBy: { createdAt: 'asc' } } }
+        costs: { orderBy: { createdAt: 'asc' } },
+        targets: { orderBy: { createdAt: 'asc' } },
+        conversations: { orderBy: { createdAt: 'asc' } } }
     });
   }
 
@@ -81,7 +98,9 @@ export class DurableOrchestrator {
       where: { id }, include: { events: { orderBy: { createdAt: 'asc' } },
         delivery: true, messages: { orderBy: { createdAt: 'asc' } },
         facts: { orderBy: { createdAt: 'asc' } },
-        costs: { orderBy: { createdAt: 'asc' } } }
+        costs: { orderBy: { createdAt: 'asc' } },
+        targets: { orderBy: { createdAt: 'asc' } },
+        conversations: { orderBy: { createdAt: 'asc' } } }
     });
     if (!run) throw new DemoError(404, 'WORKFLOW_NOT_FOUND', 'Поручение не найдено');
     return run;
@@ -112,9 +131,15 @@ export class DurableOrchestrator {
         where: { id, state: { in: [...ACTIVE, 'paused'] } },
         data: { state, pausedFrom: null, step: 'done', leaseToken: null, leasedUntil: null, finishedAt: new Date() }
       });
-      if (changed.count) await tx.workflowEvent.create({
-        data: { workflowId: id, kind: completed ? 'completed' : 'stopped' }
-      });
+      if (changed.count) {
+        await tx.workflowConversation.updateMany({
+          where: { workflowId: id, state: { not: 'mock_simulation' } },
+          data: { state: completed ? 'completed' : 'cancelled' }
+        });
+        await tx.workflowEvent.create({
+          data: { workflowId: id, kind: completed ? 'completed' : 'stopped' }
+        });
+      }
     });
     await this.db.textDelivery.updateMany({
       where: { workflowId: id, state: 'queued' }, data: { state: 'cancelled' }
@@ -265,6 +290,10 @@ export class DurableOrchestrator {
             availableAt: new Date(Date.now() + POLL_MS), leaseToken: null, leasedUntil: null }
         });
         if (!updated.count) return;
+        await tx.workflowConversation.updateMany({
+          where: { workflowId: id, state: 'planned' },
+          data: { state: 'waiting_external' }
+        });
         await tx.textDelivery.create({
           data: { workflowId: id, chatId,
             channel: run.transport === 'telegram_test' ? 'telegram_bot_test' : run.transport,
@@ -307,6 +336,10 @@ export class DurableOrchestrator {
             failures: 0, lastError: null, leaseToken: null, leasedUntil: null }
         });
         if (!changed.count) return;
+        await tx.workflowConversation.updateMany({
+          where: { workflowId: id, state: { not: 'mock_simulation' } },
+          data: { state: 'completed' }
+        });
         if (quotes.length) {
           await tx.workflowFact.createMany({
             data: quotes.map(q => ({ workflowId: id, messageId: received.id,
