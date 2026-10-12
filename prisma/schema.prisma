@@ -64,6 +64,8 @@ model WorkflowRun {
   messages        TextMessage[]
   facts           WorkflowFact[]
   costs           WorkflowCostEntry[]
+  targets         WorkflowTarget[]
+  conversations   WorkflowConversation[]
   maxCostCents    Int             @default(500)
   spentCents      Int             @default(0)
   demoTaskId      String?         @db.Uuid
@@ -169,4 +171,35 @@ model WorkflowCostEntry {
   createdAt   DateTime    @default(now())
   @@unique([workflowId, eventKey])
   @@index([workflowId, createdAt])
+}
+
+// Normalized P1 workflow addresses. Targets are mock organizations or expressly
+// allowlisted private test recipients; no automated contact discovery.
+model WorkflowTarget {
+  id           String                 @id @default(uuid()) @db.Uuid
+  workflowId   String                 @db.Uuid
+  workflow     WorkflowRun            @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  sourceKey    String
+  label        String
+  channel      String
+  recipientId  String?
+  origin       String
+  createdAt    DateTime               @default(now())
+  conversations WorkflowConversation[]
+  @@unique([workflowId, sourceKey])
+  @@index([workflowId, createdAt])
+}
+
+model WorkflowConversation {
+  id          String         @id @default(uuid()) @db.Uuid
+  workflowId  String         @db.Uuid
+  workflow    WorkflowRun    @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  targetId    String         @db.Uuid
+  target      WorkflowTarget @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  channel     String
+  state       String         @default("planned")
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  @@unique([workflowId, targetId])
+  @@index([workflowId, state])
 }
