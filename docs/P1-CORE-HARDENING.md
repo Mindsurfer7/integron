@@ -19,6 +19,11 @@ or enable live autonomous outreach, phone calls or production server access.
   delivery quotes are preserved with offsets; distinct values within the same
   field are `conflicting`, never silently resolved into an authoritative price.
   Negative and positive overlapping phrases are not double-counted.
+- [x] **Durable target/conversation identities:** workflow creation now records
+  three explicitly mock fixture organizations or one explicitly allowlisted
+  test recipient; per-target conversation state is persisted and updated on
+  queue, completion, cancellation and timeout. No discovery, no real unknown
+  contacts and no cross-channel outreach are enabled.
 - [x] **Per-workflow cost accounting primitive:** PostgreSQL stores
   `maxCostCents` (default 500 USD cents), `spentCents` and an idempotent
   `WorkflowCostEntry` ledger. Atomic conditional updates handle concurrent
@@ -37,7 +42,7 @@ or enable live autonomous outreach, phone calls or production server access.
   reservations and reconcile actual provider costs.
 - Telegram free-text answers and approvals beyond fixed demo
   `cheapest|fastest|defer` are still not supported.
-- No general `TargetOrganization/Contact/Conversation/Call` persistence model
+- No general multi-organization live discovery, Contact/Identity/Call persistence model
   or public API authentication. The API remains localhost only.
 - An unavailable Telegram/WhatsApp native test account and unknown outbound
   delivery cannot be automatically retried or treated as successful.
@@ -54,7 +59,7 @@ pass on the PR head.
 
 ## Remaining P1 acceptance
 
-- [ ] Fully normalized targets, contacts, conversations, identities, approvals
+- [ ] Contacts, identities, approvals and call-specific conversation models
   and call-specific clarifications.
 - [ ] Schema-validated free-text human answers, approval TTL and concurrent
   owner questions with independent callback routing.
