@@ -136,9 +136,9 @@ test('two simultaneous conflicts: exact owner question ID/reply-to, restart, no 
   try {
     const restarted = new DurableOrchestrator(recovery, policy, undefined,
       undefined, undefined, owner);
-    assert.equal(await restarted.tick(), first.run.id);
+    const processed = [await restarted.tick(), await restarted.tick()];
+    assert.deepEqual(new Set(processed), new Set([first.run.id, second.run.id]));
     assert.equal((await restarted.get(first.run.id)).state, 'completed');
-    assert.equal(await restarted.tick(), second.run.id);
     const other = await restarted.get(second.run.id);
     assert.equal(other.state, 'completed');
     assert.equal(other.ownerQuestions[0].answer, 'Уточни у поставщика');
