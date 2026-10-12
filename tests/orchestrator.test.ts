@@ -37,18 +37,21 @@ test('durable plan -> mock collect -> owner answer -> resume after restart', {
   assert.equal((await tasks.get(original.id)).results.length, 3);
   assert.equal(await db.ownerNotification.count(), 1);
 
-  const restarted = new DurableOrchestrator(new PrismaClient());
-  // A second instance points at the same database and reads persisted steps.
-  assert.equal((await restarted.get(original.id)).step, 'await_owner');
-  await tasks.answerQuestion(original.clarificationId, 'fastest');
-  await db.workflowRun.update({ where: { id: original.id }, data: { availableAt: new Date(0) } });
-  assert.equal(await restarted.tick(), original.id);
-  state = await jobs.get(original.id);
-  assert.equal(state.state, 'completed');
-  assert.equal(state.step, 'done');
-  assert.deepEqual(state.events.map(x => x.kind),
-    ['created', 'planned', 'owner_question_created', 'completed']);
-  assert.equal(await restarted.tick(), null);
+  const nextConnection = new PrismaClient();
+  try {
+    const restarted = new DurableOrchestrator(nextConnection);
+    // A second instance points at the same database and reads persisted steps.
+    assert.equal((await restarted.get(original.id)).step, 'await_owner');
+    await tasks.answerQuestion(original.clarificationId, 'fastest');
+    await db.workflowRun.update({ where: { id: original.id }, data: { availableAt: new Date(0) } });
+    assert.equal(await restarted.tick(), original.id);
+    state = await jobs.get(original.id);
+    assert.equal(state.state, 'completed');
+    assert.equal(state.step, 'done');
+    assert.deepEqual(state.events.map(x => x.kind),
+      ['created', 'planned', 'owner_question_created', 'completed']);
+    assert.equal(await restarted.tick(), null);
+  } finally { await nextConnection.$disconnect(); }
 }));
 
 test('crash between creating question and saving workflow transition is idempotent', {

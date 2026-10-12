@@ -148,10 +148,13 @@ export class DurableOrchestrator {
         demoTaskId: id
       }, 'owner_question_created');
       if (!advanced) {
-        // Stop won the race while collect was in flight.
-        try { await tasks.stop(id); }
-        catch (error) {
-          if (!(error instanceof DemoError && error.code === 'TASK_FINISHED')) throw error;
+        // Lost/expired leases must not cancel a task owned by a different worker.
+        const latest = await this.db.workflowRun.findUnique({ where: { id } });
+        if (latest?.state === 'cancelled') {
+          try { await tasks.stop(id); }
+          catch (error) {
+            if (!(error instanceof DemoError && error.code === 'TASK_FINISHED')) throw error;
+          }
         }
       }
     } else if (run.step === 'await_owner') {

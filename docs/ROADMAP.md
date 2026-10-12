@@ -27,7 +27,7 @@
 
 - **P0:** local demo + SQLite + Fastify/PostgreSQL реализованы отдельными итерациями; полный P0 (строгая типизация, секрет-сканер, полноценный CI на macOS) ещё не закрыт.
 - **P1 (частично):** PostgreSQL теперь транзакционно хранит mock-вопросы и notification outbox. Отдельный Telegram-worker отправляет их проверенному владельцу, принимает ответы по UUID, сохраняет polling offset и не повторяет неоднозначную отправку автоматически. См. [P1-TELEGRAM-HITL.md](P1-TELEGRAM-HITL.md).
-- **P1 ещё впереди:** реальный асинхронный task orchestrator, нормализованные сообщения/факты/аудит, leases/reconciliation, права и production-security. Telegram сейчас работает **только на симуляции**, реальные звонки и outreach выключены.
+- **P1 (добавлен slice 2):** самостоятельная PostgreSQL-очередь WorkflowRun с жизненным циклом plan → collect(mock) → wait owner → resume, lease и retries, аудит WorkflowEvent, UI/API. См. [P1-ORCHESTRATOR.md](P1-ORCHESTRATOR.md). Реальный планировщик LLM, нормализованные сообщения/факты, reconcile внешних side effects, пауза/возобновление и production-security остаются впереди. Telegram и оркестратор пока работают **только на симуляции**, реальные звонки и outreach выключены.
 
 ## 2. Этапы и зависимости
 
