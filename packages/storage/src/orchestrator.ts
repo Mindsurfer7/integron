@@ -112,6 +112,14 @@ export class DurableOrchestrator {
     return run;
   }
 
+  async answerOwnerText(workflowId: string, questionId: string, text: unknown) {
+    if (!UUID.test(workflowId)) {
+      throw new DemoError(404, 'WORKFLOW_NOT_FOUND', 'Поручение не найдено');
+    }
+    return answerWorkflowOwnerQuestion(this.db, questionId, text, 'local_web',
+      undefined, workflowId);
+  }
+
   /** Safe on both queued jobs and questions already sent to Telegram. */
   async stop(id: string) {
     const run = await this.get(id);
