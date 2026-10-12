@@ -44,5 +44,6 @@ pnpm dev:postgres
 - [Демо](docs/P0-FIRST-SLICE.md)
 - [SQLite](docs/P0-PERSISTENCE.md)
 - [Fastify + PostgreSQL](docs/P0-FASTIFY-POSTGRES.md)
+- [Telegram HITL (P1 slice)](docs/P1-TELEGRAM-HITL.md)
 
 Никаких платных записей, платежей или предоставления личных данных без явного согласования с владельцем.
