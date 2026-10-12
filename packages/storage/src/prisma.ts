@@ -35,9 +35,23 @@ export class PrismaDemoTaskService {
     if (!row) throw new DemoError(404, 'TASK_NOT_FOUND', 'Демонстрационная задача не найдена');
     return fromJson(row.payload);
   }
-  async create(goal: unknown): Promise<DemoTask> {
+  async create(goal: unknown, ids?: { taskId: string; questionId: string }): Promise<DemoTask> {
     // Preserve current P0 goal validation and scripted mock contacts.
     const task = new DemoTaskStore().create(goal);
+    if (ids) {
+      const originalQuestionId = task.question.id;
+      task.id = ids.taskId;
+      task.question.id = ids.questionId;
+      for (const event of task.events) {
+        event.message = event.message.replace(originalQuestionId, ids.questionId);
+      }
+      const existing = await this.prisma.demoTask.findUnique({ where: { id: ids.taskId } });
+      if (existing) {
+        if (fromJson(existing.payload).goal !== task.goal) throw new Error('Idempotency key conflict');
+        return fromJson(existing.payload);
+      }
+    }
+    try {
     await this.prisma.$transaction(async tx => {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(71615321)::text`;
       if (await tx.demoTask.count() >= 100) throw new DemoError(429, 'DEMO_LIMIT', 'Лимит: 100 демонстрационных задач');
@@ -53,6 +67,13 @@ export class PrismaDemoTaskService {
       });
       await tx.ownerNotification.create({ data: { clarificationId: question.id } });
     });
+    } catch (error) {
+      if (ids && error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const existing = await this.prisma.demoTask.findUnique({ where: { id: ids.taskId } });
+        if (existing && fromJson(existing.payload).goal === task.goal) return fromJson(existing.payload);
+      }
+      throw error;
+    }
     return task;
   }
   async answer(taskId: string, questionId: unknown, choice: unknown): Promise<DemoTask> {

@@ -50,3 +50,37 @@ model TelegramPollingCursor {
   id           Int    @id
   lastUpdateId BigInt @default(0)
 }
+
+
+// P1.2 durable orchestration; currently only deterministic mock executors.
+// Leases fence concurrent workers, and preallocated IDs make collecting idempotent.
+model WorkflowRun {
+  id              String          @id @db.Uuid
+  goal            String
+  clarificationId String          @db.Uuid
+  demoTaskId      String?         @db.Uuid
+  state           String          @default("queued")
+  step            String          @default("plan")
+  plan            Json?           @db.JsonB
+  availableAt     DateTime        @default(now())
+  leaseToken      String?
+  leasedUntil     DateTime?
+  failures        Int             @default(0)
+  lastError       String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  finishedAt      DateTime?
+  events          WorkflowEvent[]
+  @@index([state, availableAt])
+  @@index([leasedUntil])
+}
+
+model WorkflowEvent {
+  id         String      @id @default(uuid()) @db.Uuid
+  workflowId String      @db.Uuid
+  workflow   WorkflowRun @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  kind       String
+  metadata   Json?       @db.JsonB
+  createdAt  DateTime    @default(now())
+  @@index([workflowId, createdAt])
+}
