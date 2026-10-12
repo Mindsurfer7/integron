@@ -149,7 +149,7 @@ async function refreshWorkflows() {
     for (const f of active.facts) {
       const original = active.messages?.find(m => m.id === f.messageId);
       if (!original || original.body.slice(f.startOffset, f.endOffset) !== f.quote) continue;
-      facts.append(element('p', f.field + ': ' + f.value + ' · непроверенное утверждение собеседника'));
+      facts.append(element('p', f.field + ': ' + f.value + (f.status === 'conflicting' ? ' · противоречивые сведения (требуется уточнение)' : ' · непроверенное утверждение собеседника')));
       facts.append(element('small', 'Цитата: «' + f.quote + '» · сообщение ' + original.providerMessageId));
     }
     workflowDetail.append(facts);
