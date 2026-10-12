@@ -88,3 +88,66 @@ stopButton.addEventListener('click', async () => {
   catch (err) { showError(err); }
 });
 refresh().catch(showError);
+
+
+// The durable orchestrator API is intentionally available only with PostgreSQL.
+const workflowPanel = document.querySelector('#workflow-panel');
+const workflowList = document.querySelector('#workflow-list');
+const workflowDetail = document.querySelector('#workflow-detail');
+let activeWorkflowId = null;
+let workflowTimer = null;
+async function refreshWorkflows() {
+  const response = await fetch('/api/workflows');
+  if (response.status === 404) return;
+  if (!response.ok) throw new Error('Не удалось загрузить очередь поручений');
+  const { workflows } = await response.json();
+  workflowPanel.hidden = false;
+  workflowList.replaceChildren();
+  if (!workflows.length) workflowList.append(element('p', 'Очередь пуста.'));
+  for (const run of workflows) {
+    const button = element('button', run.goal + ' · ' + run.state + ' / ' + run.step);
+    button.type = 'button';
+    button.addEventListener('click', () => { activeWorkflowId = run.id; refreshWorkflows().catch(showError); });
+    workflowList.append(button);
+  }
+  workflowDetail.replaceChildren();
+  const active = workflows.find(item => item.id === activeWorkflowId);
+  if (!active) return;
+  workflowDetail.append(element('h3', 'Поручение #' + active.id.slice(0, 8)));
+  workflowDetail.append(element('p', 'Состояние: ' + active.state + ', шаг: ' + active.step));
+  if (active.plan) workflowDetail.append(element('p', 'Исполнитель: mock · ' + active.plan.organizations.length + ' организации'));
+  if (active.demoTaskId) {
+    const details = element('button', 'Открыть результаты и вопрос');
+    details.addEventListener('click', async () => { activeTaskId = active.demoTaskId; await refresh(); });
+    workflowDetail.append(details);
+  }
+  if (!['completed', 'cancelled', 'failed'].includes(active.state)) {
+    const cancel = element('button', 'Остановить поручение');
+    cancel.addEventListener('click', async () => {
+      try { await request('/api/workflows/' + active.id + '/stop', 'POST'); await refreshWorkflows(); }
+      catch (err) { showError(err); }
+    });
+    workflowDetail.append(cancel);
+  }
+  const audit = element('ul');
+  for (const e of active.events) {
+    audit.append(element('li', new Date(e.createdAt).toLocaleString() + ' · ' + e.kind));
+  }
+  workflowDetail.append(audit);
+}
+document.querySelector('#workflow-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    error.textContent = '';
+    const goal = document.querySelector('#workflow-goal').value;
+    const { workflow } = await request('/api/workflows', 'POST', { goal });
+    activeWorkflowId = workflow.id;
+    await refreshWorkflows();
+  } catch (err) { showError(err); }
+});
+refreshWorkflows().then(() => {
+  if (!workflowPanel.hidden) workflowTimer = setInterval(() => {
+    refreshWorkflows().catch(showError);
+    refresh().catch(showError);
+  }, 3000);
+}).catch(showError);

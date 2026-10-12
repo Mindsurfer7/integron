@@ -18,4 +18,13 @@ button.primary{background:#168361;border-color:#168361}.badge{background:#163c33
 <section class="panel"><h2>Новое поручение</h2><form id="task-form"><label for="goal">Что нужно узнать?</label><textarea id="goal" maxlength="500" required>Узнай стоимость и сроки услуги в трёх клиниках</textarea><button class="primary" type="submit">Запустить симуляцию</button></form><p id="error" role="alert"></p></section>
 <section class="panel"><h2>Задачи</h2><div id="tasks" class="muted">Пока нет задач.</div></section>
 <section class="panel" id="detail" hidden><h2>Ход выполнения</h2><p id="task-status"></p><div id="results" class="grid"></div><div id="question"></div><h3>Журнал событий</h3><ul id="events"></ul><button id="stop" type="button">Остановить задачу</button></section>
+<section class="panel" id="workflow-panel" hidden>
+<h2>Долгие поручения · PostgreSQL</h2>
+<p class="muted">Очередь исполняется отдельным worker. Планирование, сбор ответов и ожидание владельца — пока только симуляция. Работает после перезапуска.</p>
+<form id="workflow-form"><label for="workflow-goal">Что поручить?</label>
+<textarea id="workflow-goal" maxlength="500" required>Сравни сроки и стоимость у трёх компаний</textarea>
+<button class="primary" type="submit">Поставить в очередь</button></form>
+<div id="workflow-list"></div>
+<div id="workflow-detail"></div>
+</section>
 </main><script type="module" src="/app.js"></script></body></html>
