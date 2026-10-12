@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import { readFile } from 'node:fs/promises';
 import { DemoError, type DemoTask } from '../../../packages/core/src/demo.ts';
+import { TextPolicyError } from '../../../packages/transports/src/contracts.ts';
 
 export interface TaskService {
   list(): DemoTask[] | Promise<DemoTask[]>;
@@ -13,7 +14,7 @@ export interface TaskService {
 export interface WorkflowApi {
   list(): Promise<unknown>;
   get(id: string): Promise<unknown>;
-  create(goal: unknown): Promise<unknown>;
+  create(goal: unknown, options?: { transport?: string; targetChatId?: unknown }): Promise<unknown>;
   stop(id: string): Promise<unknown>;
 }
 
@@ -45,7 +46,7 @@ export function buildFastifyApp(
     return payload;
   });
   app.setErrorHandler((error, _request, reply) => {
-    if (error instanceof DemoError) {
+    if (error instanceof DemoError || error instanceof TextPolicyError) {
       return reply.code(error.statusCode).send({ error: error.code, message: error.message });
     }
     const status = typeof error.statusCode === 'number' && error.statusCode >= 400 && error.statusCode < 500
@@ -84,8 +85,10 @@ export function buildFastifyApp(
   }));
   if (workflows) {
     app.get('/api/workflows', async () => ({ workflows: await workflows.list() }));
-    app.post<{ Body: { goal?: unknown } }>('/api/workflows', async (request, reply) => {
-      const workflow = await workflows.create(request.body?.goal);
+    app.post<{ Body: { goal?: unknown; transport?: string; targetChatId?: unknown } }>('/api/workflows', async (request, reply) => {
+      const workflow = await workflows.create(request.body?.goal, {
+        transport: request.body?.transport, targetChatId: request.body?.targetChatId
+      });
       return reply.code(201).send({ workflow });
     });
     app.get<{ Params: { id: string } }>('/api/workflows/:id', async request => ({

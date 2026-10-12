@@ -115,7 +115,19 @@ async function refreshWorkflows() {
   if (!active) return;
   workflowDetail.append(element('h3', 'Поручение #' + active.id.slice(0, 8)));
   workflowDetail.append(element('p', 'Состояние: ' + active.state + ', шаг: ' + active.step));
-  if (active.plan) workflowDetail.append(element('p', 'Исполнитель: mock · ' + active.plan.organizations.length + ' организации'));
+  if (active.plan) workflowDetail.append(element('p', 'Канал: ' + (active.transport === 'mock' ? 'mock' : 'Telegram test') + ' · внешняя отправка: ' + (active.transport === 'mock' ? 'нет' : 'только allowlist')));
+  if (active.delivery) {
+    workflowDetail.append(element('p', 'Доставка: ' + active.delivery.state +
+      (active.delivery.state === 'unknown' ? ' · результат неизвестен, автоматической повторной отправки нет' : '')));
+  }
+  if (active.messages?.length) {
+    const transcript = element('div');
+    transcript.append(element('h3', 'Переписка (реальные Telegram-сообщения)'));
+    for (const m of active.messages) {
+      transcript.append(element('p', (m.direction === 'in' ? 'Получено: ' : 'Отправлено: ') + m.body));
+    }
+    workflowDetail.append(transcript);
+  }
   if (active.demoTaskId) {
     const details = element('button', 'Открыть результаты и вопрос');
     details.addEventListener('click', async () => { activeTaskId = active.demoTaskId; await refresh(); });
@@ -140,7 +152,9 @@ document.querySelector('#workflow-form').addEventListener('submit', async event 
   try {
     error.textContent = '';
     const goal = document.querySelector('#workflow-goal').value;
-    const { workflow } = await request('/api/workflows', 'POST', { goal });
+    const transport = document.querySelector('#workflow-transport').value;
+    const targetChatId = transport === 'telegram_test' ? document.querySelector('#workflow-chat').value.trim() : undefined;
+    const { workflow } = await request('/api/workflows', 'POST', { goal, transport, targetChatId });
     activeWorkflowId = workflow.id;
     await refreshWorkflows();
   } catch (err) { showError(err); }
@@ -151,3 +165,8 @@ refreshWorkflows().then(() => {
     refresh().catch(showError);
   }, 3000);
 }).catch(showError);
+
+const workflowTransport = document.querySelector('#workflow-transport');
+workflowTransport.addEventListener('change', () => {
+  document.querySelector('#workflow-target').hidden = workflowTransport.value !== 'telegram_test';
+});

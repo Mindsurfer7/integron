@@ -52,3 +52,8 @@ pnpm dev:postgres
 ## Асинхронный оркестратор (P1, PostgreSQL)
 
 После pnpm db:generate && pnpm db:deploy запустите pnpm dev:postgres и в отдельном терминале pnpm dev:orchestrator. На веб-странице откроется очередь «Долгие поручения» с состояниями, журналом и остановкой. Для кнопок владельцу можно дополнительно запустить pnpm dev:telegram с секретами, установленными локально. Всё ещё **mock** — никакие организации не получают сообщений. См. [docs/P1-ORCHESTRATOR.md](docs/P1-ORCHESTRATOR.md).
+
+
+## P2 — тестовый Telegram-адаптер (с реальными сообщениями только для allowlist)
+
+В PostgreSQL-профиле можно подключить отдельного Telegram Bot API агента, который общается исключительно с одним-двумя своими тестовыми private чатами после /start. Требуются отдельный BotFather-токен и явный TEST_TELEGRAM_ENABLED=true. Bot API не заменяет Telegram USER/TDLib и не может инициировать сообщение произвольной организации. Инструкция: [docs/P2-TELEGRAM-TEST.md](docs/P2-TELEGRAM-TEST.md).

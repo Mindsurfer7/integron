@@ -4,6 +4,7 @@
 
 | Канал | Исходящие сообщения | Входящие | Голосовые звонки | Локально на Mac | Linux VPS | Риски |
 |---|---|---|---|---|---|---|
+| Telegram Bot API (только тестовый агент-бот, явный allowlist и /start) | да, после /start | да, reply-to | нет | experimental | experimental | отдельный токен, не подходит для первого сообщения незнакомцу |
 | Telegram Bot API (владельцу) | да, после /start | да | нет | да | да | проверять owner chat/user ID |
 | Telegram USER/TDLib | возможны | да | отдельный сложный spike | да | да | ограничения новых диалогов, anti-spam |
 | WhatsApp USER / Baileys/WAHA | экспериментально | да | не включено в text SDK | да | да | неофициальные API, ban risk |
