@@ -1,6 +1,6 @@
 # Integron — подробный roadmap
 
-**Версия:** 2026-10-12. **Статус:** все этапы TODO (написана спецификация; реализация не начата).
+**Версия:** 2026-10-12. **Статус:** поэтапная частичная реализация; чекбоксы ниже обозначают **полную приёмку**, а не наличие первого рабочего slice.
 
 ## 1. Продуктовая цель
 
@@ -151,3 +151,16 @@
 - Native account authentication and real two-account send/reply smoke: **not tested** (requires local interactive credentials and consenting accounts).
 - Full P2.2 platform coverage (Mac + VPS), unknown delivery operator reconciliation and production security: incomplete.
 - See [P2-TDLIB-USER.md](P2-TDLIB-USER.md).
+
+
+## Current P2.2 hardening / P2.3 spike follow-up
+
+- [x] Credential-free TDLib unit tests cover signed temporary IDs, early/late confirmation, definitive rejection, missing sending_state (UNKNOWN), blocked chats and reply parser.
+- [x] Mac/Linux local preflight script validates test flags/configuration without network or printing credentials.
+- [x] macOS CI job added for credential-free TDLib contract tests; PostgreSQL integration tests retained.
+- [x] P2.3 WhatsApp USER option research and risk/acceptance gate documented at [P2-3-WHATSAPP-SPIKE.md](P2-3-WHATSAPP-SPIKE.md).
+- [ ] Real TDLib USER account login and two-account E2E on Mac M1 / Linux (interactive secrets and consent required).
+- [ ] Actual WhatsApp USER QR pairing, live send/reply, crash recovery and permitted account validation (interactive accounts required).
+- [ ] Production WhatsApp adapter (not created; feature remains unavailable).
+
+No personal account E2E, macOS ARM native library load, or WhatsApp messages are claimed by this offline follow-up.
