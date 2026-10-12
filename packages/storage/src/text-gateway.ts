@@ -110,21 +110,45 @@ export async function handleTestText(
       providerId: incoming.replyToProviderId, state: 'sent' }
   });
   if (!delivery || delivery.expiresAt <= new Date()) return false;
-  return db.$transaction(async tx => {
-    const changed = await tx.workflowRun.updateMany({
-      where: { id: delivery.workflowId, transport: route.transport,
-        targetChatId: incoming.chatId, state: 'waiting_external', step: 'await_external' },
-      data: { state: 'running', step: 'process_external', availableAt: new Date() }
+  // Both the owner resuming and the recipient replying contend on the same
+  // WorkflowRun row. Retry a raced compare-and-swap rather than acknowledging
+  // (and permanently dropping) the external update.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const result = await db.$transaction(async tx => {
+      const run = await tx.workflowRun.findUnique({ where: { id: delivery.workflowId } });
+      if (!run || run.transport !== route.transport || run.targetChatId !== incoming.chatId ||
+          run.step !== 'await_external' ||
+          !['waiting_external', 'paused'].includes(run.state)) return false;
+      const paused = run.state === 'paused';
+      const changed = await tx.workflowRun.updateMany({
+        where: { id: delivery.workflowId, transport: route.transport,
+          targetChatId: incoming.chatId, state: run.state, step: 'await_external' },
+        data: paused
+          ? { availableAt: new Date() } // row-level fence, keep workflow paused
+          : { state: 'running', step: 'process_external', availableAt: new Date() }
+      });
+      if (!changed.count) return 'retry';
+      const alreadyAnswered = await tx.textMessage.findFirst({
+        where: { workflowId: delivery.workflowId, direction: 'in' }
+      });
+      if (alreadyAnswered) return false;
+      await tx.textMessage.create({
+        data: { workflowId: delivery.workflowId, channel: route.channel, chatId: incoming.chatId,
+          direction: 'in', providerMessageId: incoming.providerMessageId,
+          replyToProviderId: incoming.replyToProviderId, body: incoming.body.trim() }
+      });
+      await tx.workflowEvent.create({ data: {
+        workflowId: delivery.workflowId,
+        kind: paused ? 'text_reply_saved_while_paused' : 'text_reply_received'
+      } });
+      return true;
     });
-    if (!changed.count) return false;
-    await tx.textMessage.create({
-      data: { workflowId: delivery.workflowId, channel: route.channel, chatId: incoming.chatId,
-        direction: 'in', providerMessageId: incoming.providerMessageId,
-        replyToProviderId: incoming.replyToProviderId, body: incoming.body.trim() }
-    });
-    await tx.workflowEvent.create({ data: { workflowId: delivery.workflowId, kind: 'text_reply_received' } });
-    return true;
-  });
+    if (result !== 'retry') return result;
+  }
+  // Do not advance Telegram polling offset when a concurrent state race cannot
+  // be settled; the same update will be safely retried on the next cycle.
+  throw new Error('Concurrent workflow reply update');
+
 }
 
 /** Single getUpdates poller per agent bot. DB offset moves only after the event

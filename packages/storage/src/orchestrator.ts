@@ -93,24 +93,32 @@ export class DurableOrchestrator {
     return this.get(id);
   }
 
-  /** Restores the saved step instead of creating a new send or owner question. */
+  /** Restores exactly the saved step; no new outbox or owner question.
+   * A queued reply received while paused is checked inside the same DB
+   * transaction, after fencing the row, to avoid losing a racing answer. */
   async resume(id: string) {
     const run = await this.get(id);
     if (run.state !== 'paused') {
       throw new DemoError(409, 'WORKFLOW_NOT_PAUSED', 'Поручение не находится на паузе');
     }
     if (run.transport !== 'mock') authorizeTestText(this.policyFor(run.transport), run.targetChatId);
-    const incoming = run.step === 'await_external' && run.messages.some(m => m.direction === 'in');
-    const state = run.step === 'await_external' && !incoming ? 'waiting_external' :
-      run.step === 'await_owner' ? 'waiting_owner' :
-      run.step === 'plan' ? 'queued' : 'running';
-    const step = incoming ? 'process_external' : run.step;
     await this.db.$transaction(async tx => {
       const changed = await tx.workflowRun.updateMany({
         where: { id, state: 'paused', step: run.step },
-        data: { state, step, availableAt: new Date(), leaseToken: null, leasedUntil: null }
+        data: { availableAt: new Date(), leaseToken: null, leasedUntil: null }
       });
       if (changed.count !== 1) throw new DemoError(409, 'CONCURRENT_UPDATE', 'Поручение изменилось');
+      const answered = run.step === 'await_external' && Boolean(
+        await tx.textMessage.findFirst({ where: { workflowId: id, direction: 'in' } })
+      );
+      const state = run.step === 'await_external' && !answered ? 'waiting_external' :
+        run.step === 'await_owner' ? 'waiting_owner' :
+        run.step === 'plan' ? 'queued' : 'running';
+      await tx.workflowRun.update({
+        where: { id },
+        data: { state, step: answered ? 'process_external' : run.step,
+          availableAt: new Date() }
+      });
       await tx.workflowEvent.create({ data: { workflowId: id, kind: 'resumed' } });
     });
     return this.get(id);
