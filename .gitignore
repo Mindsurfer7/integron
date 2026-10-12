@@ -1,0 +1,15 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.auth/
+.sessions/
+.browser-profiles/
+recordings/
+transcripts/
+logs/
+.DS_Store
+dist/
+coverage/
+*.sqlite
+*.db
