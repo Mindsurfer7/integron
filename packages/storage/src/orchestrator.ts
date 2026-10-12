@@ -74,6 +74,48 @@ export class DurableOrchestrator {
     return run;
   }
 
+  /** Pausing fences current orchestrator lease but cannot unsend in-flight I/O.
+   * Paused work is never claimed and queued messages remain unsent. */
+  async pause(id: string) {
+    const run = await this.get(id);
+    if (run.state === 'paused') return run;
+    if (TERMINAL.includes(run.state)) {
+      throw new DemoError(409, 'WORKFLOW_FINISHED', 'Завершённое поручение нельзя приостановить');
+    }
+    await this.db.$transaction(async tx => {
+      const changed = await tx.workflowRun.updateMany({
+        where: { id, state: { in: ACTIVE } },
+        data: { state: 'paused', leaseToken: null, leasedUntil: null }
+      });
+      if (changed.count !== 1) throw new DemoError(409, 'CONCURRENT_UPDATE', 'Поручение изменилось');
+      await tx.workflowEvent.create({ data: { workflowId: id, kind: 'paused' } });
+    });
+    return this.get(id);
+  }
+
+  /** Restores the saved step instead of creating a new send or owner question. */
+  async resume(id: string) {
+    const run = await this.get(id);
+    if (run.state !== 'paused') {
+      throw new DemoError(409, 'WORKFLOW_NOT_PAUSED', 'Поручение не находится на паузе');
+    }
+    if (run.transport !== 'mock') authorizeTestText(this.policyFor(run.transport), run.targetChatId);
+    const incoming = run.step === 'await_external' && run.messages.some(m => m.direction === 'in');
+    const state = run.step === 'await_external' && !incoming ? 'waiting_external' :
+      run.step === 'await_owner' ? 'waiting_owner' :
+      run.step === 'plan' ? 'queued' : 'running';
+    const step = incoming ? 'process_external' : run.step;
+    await this.db.$transaction(async tx => {
+      const changed = await tx.workflowRun.updateMany({
+        where: { id, state: 'paused', step: run.step },
+        data: { state, step, availableAt: new Date(), leaseToken: null, leasedUntil: null }
+      });
+      if (changed.count !== 1) throw new DemoError(409, 'CONCURRENT_UPDATE', 'Поручение изменилось');
+      await tx.workflowEvent.create({ data: { workflowId: id, kind: 'resumed' } });
+    });
+    return this.get(id);
+  }
+
   /** Safe on both queued jobs and questions already sent to Telegram. */
   async stop(id: string) {
     const run = await this.get(id);
@@ -96,7 +138,7 @@ export class DurableOrchestrator {
     const state = completed ? 'completed' : 'cancelled';
     await this.db.$transaction(async tx => {
       const changed = await tx.workflowRun.updateMany({
-        where: { id, state: { in: ACTIVE } },
+        where: { id, state: { in: STOPPABLE } },
         data: { state, step: 'done', leaseToken: null, leasedUntil: null, finishedAt: new Date() }
       });
       if (changed.count) await tx.workflowEvent.create({
@@ -310,5 +352,6 @@ export class DurableOrchestrator {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const ACTIVE = ['queued', 'running', 'waiting_owner', 'waiting_external'];
 const TERMINAL = ['completed', 'cancelled', 'failed'];
+const STOPPABLE = [...ACTIVE, 'paused'];
 const LEASE_MS = 30_000;
 const POLL_MS = 3_000;
