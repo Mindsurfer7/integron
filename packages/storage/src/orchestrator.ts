@@ -185,7 +185,7 @@ export class DurableOrchestrator {
         step: 'collect', state: 'running', plan: plan as Prisma.InputJsonValue
       }, 'planned');
     } else if (run.step === 'send_text') {
-      const chatId = authorizeTestText(this.policyFor(run.transport), run.targetChatId);
+      const chatId = this.authorizeRecipient(run.transport, run.targetChatId);
       await this.db.$transaction(async tx => {
         const updated = await tx.workflowRun.updateMany({
           where: { id, leaseToken: token, step: 'send_text', state: 'running',
