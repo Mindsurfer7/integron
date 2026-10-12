@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { execFileSync } from 'node:child_process';
 import { readWhatsAppUserPolicy, authorizeWhatsAppTestText } from '../packages/transports/src/contracts.ts';
 import { WhatsAppUserTestAdapter, accountJid, parseWhatsAppIncoming } from '../packages/transports/src/whatsapp-user.ts';
 
@@ -120,4 +121,18 @@ test('inbound handler only gets explicit notify private allowlisted replies', as
     await new Promise(resolve => setImmediate(resolve));
     assert.deepEqual(messages, ['Есть, 350 THB']);
   } finally { await adapter.close(); }
+});
+
+test('WhatsApp offline preflight accepts synthetic opt-in env and never logs JIDs', () => {
+  const args = ['scripts/local-preflight.mjs', 'whatsapp'];
+  const env = { ...process.env, TEST_WHATSAPP_USER_ENABLED: 'true',
+    WHATSAPP_LIVE_CONNECT_ENABLED: 'true', OUTBOUND_ENABLED: 'false',
+    WHATSAPP_AGENT_JID: AGENT, WHATSAPP_ALLOWED_JIDS: ALLOWED,
+    DATABASE_URL: 'postgresql://fake:fake@127.0.0.1:5432/no_connection_attempt' };
+  const output = execFileSync(process.execPath, args, { env, encoding: 'utf8' });
+  assert.match(output, /Offline preflight passed/);
+  assert.doesNotMatch(output, /77777777777|12345678901|fake:fake/);
+  assert.throws(() => execFileSync(process.execPath, args, {
+    env: { ...env, TEST_WHATSAPP_USER_ENABLED: 'false' }, encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'] }));
 });
