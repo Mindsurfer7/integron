@@ -119,6 +119,18 @@ async function refreshWorkflows() {
   if (active.plan?.research?.fields) {
     workflowDetail.append(element('p', 'План исследования: ' + active.plan.research.fields.join(', ')));
   }
+  if (typeof active.spentCents === 'number' && typeof active.maxCostCents === 'number') {
+    workflowDetail.append(element('p', 'Учтённые расходы: $' +
+      (active.spentCents / 100).toFixed(2) + ' / $' +
+      (active.maxCostCents / 100).toFixed(2) +
+      ' · фактический биллинг внешних провайдеров пока не подключён'));
+  }
+  if (active.costs?.length) {
+    for (const cost of active.costs) {
+      workflowDetail.append(element('small', 'Расход: ' + cost.category +
+        ' · $' + (cost.amountCents / 100).toFixed(2)));
+    }
+  }
   if (active.delivery) {
     workflowDetail.append(element('p', 'Доставка: ' + active.delivery.state +
       (active.delivery.state === 'unknown' ? ' · результат неизвестен, автоматической повторной отправки нет' : '')));
