@@ -29,14 +29,16 @@ test('PostgreSQL stores mock tasks and disallows duplicate owner answers', {
     const stopped = await service.stop(b.id);
     assert.equal(stopped.state, 'cancelled');
     assert.equal((await service.get(a.id)).state, 'completed');
-    const reopened = new PrismaDemoTaskService(new PrismaClient());
-    // Persistence is in Postgres, not in the service instance.
-    assert.equal((await reopened.get(a.id)).state, 'completed');
-    await assert.rejects(
-      () => reopened.answer(b.id, b.question.id, 'cheapest'),
-      (err: unknown) => err instanceof DemoError && err.code === 'QUESTION_CLOSED'
-    );
-    await (reopened as unknown as { prisma: PrismaClient }).prisma.$disconnect();
+    const otherClient = new PrismaClient();
+    try {
+      const reopened = new PrismaDemoTaskService(otherClient);
+      // Persistence is in Postgres, not in the service instance.
+      assert.equal((await reopened.get(a.id)).state, 'completed');
+      await assert.rejects(
+        () => reopened.answer(b.id, b.question.id, 'cheapest'),
+        (err: unknown) => err instanceof DemoError && err.code === 'QUESTION_CLOSED'
+      );
+    } finally { await otherClient.$disconnect(); }
   } finally {
     await prisma.demoTask.deleteMany({});
     await prisma.$disconnect();
