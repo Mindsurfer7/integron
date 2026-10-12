@@ -1,0 +1,18 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Separate P0 mock table; production entities will receive normalized schema in P1.
+// Never put real provider tokens, passwords or transcripts into this JSON.
+model DemoTask {
+  id        String   @id @db.Uuid
+  payload   Json     @db.JsonB
+  revision  Int      @default(0)
+  createdAt DateTime
+  @@index([createdAt])
+}
