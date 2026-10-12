@@ -103,3 +103,15 @@ CALL_HITL_WAIT_SECONDS=20
 Playwright: https://playwright.dev/docs/ci ; Telegram Bot API: https://core.telegram.org/bots/api ; LiveKit voice + SIP: https://docs.livekit.io/telephony/ ; LINE help: https://help.line.me/
 
 > Команды здесь — **требования к будущей реализации**, а не подтверждение, что Integron уже развёрнут.
+
+
+## Offline local verification (P2.2/P2.3)
+
+```sh
+pnpm preflight:local
+pnpm test:tdlib:unit
+pnpm test
+pnpm dev:demo
+```
+
+No Telegram/WhatsApp account, API key, real outreach or VPS is required. `pnpm preflight:tdlib` verifies supplied local variables and native library path **without performing TDLib login**, so run it only after exporting the private variables locally. Real TDLib account tests still require interactive login; WhatsApp stays a research-only candidate. See [P2-TDLIB-USER.md](P2-TDLIB-USER.md) and [P2-3-WHATSAPP-SPIKE.md](P2-3-WHATSAPP-SPIKE.md).

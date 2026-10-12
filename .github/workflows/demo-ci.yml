@@ -44,3 +44,15 @@ jobs:
       - run: pnpm db:generate
       - run: pnpm db:deploy
       - run: pnpm test:postgres
+
+  macos-tdlib-offline:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - name: Offline TDLib contract tests (no accounts or outbound traffic)
+        run: node --experimental-strip-types --test tests/tdlib-unit.test.ts
+      - name: Local preflight
+        run: node scripts/local-preflight.mjs local
