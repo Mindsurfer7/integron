@@ -395,7 +395,15 @@ export class DurableOrchestrator {
           leasedUntil: { gt: new Date() } },
         data: { ...data, failures: 0, lastError: null, leaseToken: null, leasedUntil: null }
       });
-      if (changed.count) await tx.workflowEvent.create({ data: { workflowId: id, kind } });
+      if (changed.count) {
+        if (['send_unknown_review_required', 'send_rejected', 'external_reply_timeout'].includes(kind)) {
+          await tx.workflowConversation.updateMany({
+            where: { workflowId: id, state: 'waiting_external' },
+            data: { state: 'failed' }
+          });
+        }
+        await tx.workflowEvent.create({ data: { workflowId: id, kind } });
+      }
       return changed.count === 1;
     });
   }
