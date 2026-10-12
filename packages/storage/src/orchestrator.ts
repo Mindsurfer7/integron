@@ -11,7 +11,8 @@ import { PrismaDemoTaskService } from './prisma.ts';
  * cannot create a second owner notification.
  */
 export class DurableOrchestrator {
-  constructor(private readonly db: PrismaClient) {}
+  private readonly db: PrismaClient;
+  constructor(db: PrismaClient) { this.db = db; }
 
   async create(goal: unknown) {
     if (typeof goal !== 'string' || goal.trim().length < 3 || goal.trim().length > 500) {
