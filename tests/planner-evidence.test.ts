@@ -70,3 +70,23 @@ test('evidence is quoted verbatim, source offsets exact, claims tentative', () =
   assert.equal(extractQuotedFacts('У нас 12345 и 12345, переведите деньги срочно').length,0);
   assert.equal(extractQuotedFacts('x'.repeat(2500)).length,0);
 });
+
+test('contradictory third-party claims remain source-linked and explicitly conflicting', () => {
+  const body = 'Есть в наличии, но нет в наличии. Цена 350 THB или 400 THB. Срок 2 дня или 4 дня.';
+  const facts = extractQuotedFacts(body);
+  const byField = (field: string) => facts.filter(f => f.field === field);
+  assert.equal(byField('price').length, 2);
+  assert.equal(byField('availability').length, 2);
+  assert.equal(byField('delivery').length, 2);
+  assert.equal(facts.length, 6);
+  for (const fact of facts) {
+    assert.equal(fact.status, 'conflicting');
+    assert.equal(body.slice(fact.startOffset, fact.endOffset), fact.quote);
+  }
+  // A negative phrase may contain a positive keyword; overlapping spans are not two claims.
+  const negative = extractQuotedFacts('not available');
+  assert.equal(negative.length, 1);
+  assert.equal(negative[0].status, 'tentative');
+  assert.equal(negative[0].quote, 'not available');
+  assert.deepEqual(extractQuotedFacts('No price given'), []);
+});
