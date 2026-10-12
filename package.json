@@ -1,6 +1,6 @@
 {
   "name": "integron",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.15.1",
@@ -8,6 +8,19 @@
   "scripts": {
     "dev:demo": "node --experimental-strip-types --experimental-sqlite apps/api/src/server.ts",
     "dev:local": "RUNTIME_PROFILE=local OUTBOUND_ENABLED=false node --experimental-strip-types --experimental-sqlite apps/api/src/server.ts",
-    "test": "node --experimental-strip-types --experimental-sqlite --test tests/*.test.ts"
+    "dev:api:demo": "RUNTIME_PROFILE=demo OUTBOUND_ENABLED=false node --experimental-strip-types --experimental-sqlite apps/api/src/fastify-server.ts",
+    "dev:api:local": "RUNTIME_PROFILE=local OUTBOUND_ENABLED=false node --experimental-strip-types --experimental-sqlite apps/api/src/fastify-server.ts",
+    "dev:postgres": "RUNTIME_PROFILE=postgres OUTBOUND_ENABLED=false node --experimental-strip-types --experimental-sqlite apps/api/src/fastify-server.ts",
+    "db:generate": "prisma generate",
+    "db:deploy": "prisma migrate deploy",
+    "test": "node --experimental-strip-types --experimental-sqlite --test tests/demo.test.ts tests/persistence.test.ts tests/http.test.ts tests/fastify.test.ts",
+    "test:postgres": "node --experimental-strip-types --experimental-sqlite --test tests/postgres.test.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.0",
+    "fastify": "5.6.2"
+  },
+  "devDependencies": {
+    "prisma": "6.19.0"
   }
 }
