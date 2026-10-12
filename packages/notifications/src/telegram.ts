@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import { DemoError, type OwnerChoice } from '../../core/src/demo.ts';
 import { PrismaDemoTaskService } from '../../storage/src/prisma.ts';
 import { DurableOrchestrator } from '../../storage/src/orchestrator.ts';
+import { answerWorkflowOwnerQuestion, type OwnerIdentity } from '../../storage/src/owner-questions.ts';
 
 const CHOICES: readonly OwnerChoice[] = ['cheapest', 'fastest', 'defer'];
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
@@ -10,6 +11,7 @@ const COMMAND = new RegExp('^/answer\\s+(' + UUID + ')\\s+(cheapest|fastest|defe
 const STOP = new RegExp('^/stop\\s+(' + UUID + ')\\s*$', 'i');
 const PAUSE = new RegExp('^/pause\\s+(' + UUID + ')\\s*$', 'i');
 const RESUME = new RegExp('^/resume\\s+(' + UUID + ')\\s*$', 'i');
+const OWNER_REPLY = new RegExp('^/reply\\s+(' + UUID + ')\\s+([\\s\\S]+)$', 'i');
 
 export interface TelegramUpdate {
   update_id: number;
@@ -71,6 +73,15 @@ export class TelegramBotClient {
         [{ text: '⚡ Быстрее', callback_data: 'q:' + id + ':fastest' }],
         [{ text: '⏸ Отложить', callback_data: 'q:' + id + ':defer' }]
       ] }
+    });
+    return String(result.message_id);
+  }
+  async sendWorkflowQuestion(questionId: string, workflowId: string, prompt: string): Promise<string> {
+    const result = await this.call<{ message_id: number }>('sendMessage', {
+      chat_id: this.ownerChatId,
+      text: '🤖 Integron · уточнение по поручению #' + workflowId.slice(0, 8) +
+        '\\n\\n' + prompt + '\\n\\nВопрос: ' + questionId +
+        '\\nОтветь reply на это сообщение или /reply ' + questionId + ' <текст>.'
     });
     return String(result.message_id);
   }
@@ -138,6 +149,86 @@ export async function flushOwnerOutbox(prisma: PrismaClient, bot: TelegramBotCli
   return delivered;
 }
 
+/**
+ * Separate durable outbox for workflow free-text owner review.
+ * No provider send is retried after a potentially accepted network request.
+ */
+export async function flushWorkflowOwnerOutbox(
+  prisma: PrismaClient, bot: TelegramBotClient, limit = 10
+): Promise<number> {
+  await prisma.workflowOwnerNotification.updateMany({
+    where: { state: 'sending', leasedUntil: { lt: new Date() } },
+    data: { state: 'unknown', leasedUntil: null,
+      lastError: 'Owner delivery outcome unknown after interrupted attempt' }
+  });
+  const candidates = await prisma.workflowOwnerNotification.findMany({
+    where: { state: 'queued' },
+    include: { question: { include: { workflow: {
+      select: { state: true, step: true }
+    } } } },
+    orderBy: { createdAt: 'asc' }, take: limit
+  });
+  let sent = 0;
+  for (const item of candidates) {
+    const q = item.question;
+    if (q.workflow.state === 'paused') continue; // preserve until resume
+    if (q.state !== 'pending' || q.expiresAt <= new Date() ||
+        q.ownerUserId !== bot.ownerUserId || q.ownerChatId !== bot.ownerChatId ||
+        q.workflow.state !== 'waiting_owner' || q.workflow.step !== 'await_conflict_review') {
+      await prisma.workflowOwnerNotification.updateMany({
+        where: { id: item.id, state: 'queued' }, data: { state: 'cancelled' }
+      });
+      continue;
+    }
+    const claimed = await prisma.workflowOwnerNotification.updateMany({
+      where: { id: item.id, state: 'queued' },
+      data: { state: 'sending', attempts: { increment: 1 },
+        leasedUntil: new Date(Date.now() + 35_000) }
+    });
+    if (!claimed.count) continue;
+    try {
+      const current = await prisma.workflowOwnerQuestion.findUnique({
+        where: { id: q.id }, include: { workflow: {
+          select: { state: true, step: true }
+        } }
+      });
+      if (current?.workflow.state === 'paused') {
+        await prisma.workflowOwnerNotification.updateMany({
+          where: { id: item.id, state: 'sending' },
+          data: { state: 'queued', leasedUntil: null }
+        });
+        continue;
+      }
+      if (!current || current.state !== 'pending' || current.expiresAt <= new Date() ||
+          current.workflow.state !== 'waiting_owner' ||
+          current.workflow.step !== 'await_conflict_review' ||
+          current.ownerUserId !== bot.ownerUserId ||
+          current.ownerChatId !== bot.ownerChatId) {
+        await prisma.workflowOwnerNotification.updateMany({
+          where: { id: item.id, state: 'sending' },
+          data: { state: 'cancelled', leasedUntil: null }
+        });
+        continue;
+      }
+      const messageId = await bot.sendWorkflowQuestion(current.id, current.workflowId, current.prompt);
+      await prisma.workflowOwnerNotification.updateMany({
+        where: { id: item.id, state: 'sending' },
+        data: { state: 'sent', messageId, leasedUntil: null }
+      });
+      sent++;
+    } catch (error) {
+      const definite = error instanceof TelegramApiError;
+      await prisma.workflowOwnerNotification.updateMany({
+        where: { id: item.id, state: 'sending' },
+        data: { state: definite ? 'failed' : 'unknown', leasedUntil: null,
+          lastError: definite ? 'Telegram rejected owner question' :
+            'Owner question delivery result unknown' }
+      });
+    }
+  }
+  return sent;
+}
+
 function isOwner(bot: TelegramBotClient, userId: number | undefined, chatId: number | undefined): boolean {
   return userId !== undefined && chatId !== undefined &&
     String(userId) === bot.ownerUserId && String(chatId) === bot.ownerChatId;
@@ -170,7 +261,7 @@ export async function handleOwnerUpdate(
   if (!message || !isOwner(bot, message.from?.id, message.chat.id)) return;
   const text = message.text?.trim() ?? '';
   if (/^\/start(?:\s|$)/.test(text) || /^\/help(?:\s|$)/.test(text)) {
-    await bot.sendText('Integron: /status — активные вопросы и поручения; /answer <questionId> cheapest|fastest|defer; /pause <workflowId>; /resume <workflowId>; /stop <taskId|workflowId>. Только тестовые задачи.');
+    await bot.sendText('Integron: /status; /answer <questionId> cheapest|fastest|defer; /reply <questionId> <текст>; /pause <workflowId>; /resume <workflowId>; /stop <taskId|workflowId>. Только тестовые задачи.');
     return;
   }
   if (/^\/status(?:\s|$)/.test(text)) {
@@ -182,7 +273,15 @@ export async function handleOwnerUpdate(
       select: { id: true, state: true, step: true },
       orderBy: { createdAt: 'desc' }, take: 5
     });
+    const ownerQuestions = await prisma.workflowOwnerQuestion.findMany({
+      where: { state: 'pending', expiresAt: { gt: new Date() },
+        ownerUserId: bot.ownerUserId, ownerChatId: bot.ownerChatId },
+      orderBy: { createdAt: 'asc' }, take: 5
+    });
     await bot.sendText([
+      ownerQuestions.length ? 'Свободные вопросы:\\n' +
+        ownerQuestions.map(q => q.id + ' (поручение ' + q.workflowId.slice(0, 8) + ')').join('\\n')
+        : 'Нет новых свободных вопросов.',
       active.length ? 'Ожидают ответа:\n' +
         active.map(q => q.id + ' (задача ' + q.taskId.slice(0, 8) + ')').join('\n')
         : 'Нет ожидающих вопросов.',
@@ -220,6 +319,20 @@ export async function handleOwnerUpdate(
     }
     return;
   }
+  // Only a verified owner and an exact question UUID or reply-to message may
+  // resolve free-text questions. Never infer "last active question".
+  const ownerIdentity: OwnerIdentity = { userId: bot.ownerUserId, chatId: bot.ownerChatId };
+  const freeText = OWNER_REPLY.exec(text);
+  if (freeText) {
+    try {
+      await answerWorkflowOwnerQuestion(prisma, freeText[1], freeText[2], 'telegram', ownerIdentity);
+      await bot.sendText('Ответ сохранён для вопроса ' + freeText[1].slice(0, 8));
+    } catch (error) {
+      if (!(error instanceof DemoError)) throw error;
+      await bot.sendText('Не удалось принять ответ: ' + error.code);
+    }
+    return;
+  }
   let answer = COMMAND.exec(text);
   if (!answer && message.reply_to_message?.message_id !== undefined &&
       CHOICES.includes(text.toLowerCase() as OwnerChoice)) {
@@ -232,6 +345,24 @@ export async function handleOwnerUpdate(
     try {
       await workflow.answerQuestion(answer[1], answer[2].toLowerCase() as OwnerChoice);
       await bot.sendText('Ответ принят: ' + answer[2].toLowerCase());
+    } catch (error) {
+      if (!(error instanceof DemoError)) throw error;
+      await bot.sendText('Не удалось принять ответ: ' + error.code);
+    }
+    return;
+  }
+  if (message.reply_to_message?.message_id !== undefined && text &&
+      !text.startsWith('/')) {
+    const notification = await prisma.workflowOwnerNotification.findFirst({
+      where: { messageId: String(message.reply_to_message.message_id), state: 'sent',
+        question: { ownerUserId: bot.ownerUserId, ownerChatId: bot.ownerChatId } },
+      select: { questionId: true }
+    });
+    if (!notification) return;
+    try {
+      await answerWorkflowOwnerQuestion(prisma, notification.questionId,
+        text, 'telegram', ownerIdentity);
+      await bot.sendText('Ответ сохранён для вопроса ' + notification.questionId.slice(0, 8));
     } catch (error) {
       if (!(error instanceof DemoError)) throw error;
       await bot.sendText('Не удалось принять ответ: ' + error.code);
