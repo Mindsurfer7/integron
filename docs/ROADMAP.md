@@ -197,10 +197,12 @@ See [P1-CORE-HARDENING.md](P1-CORE-HARDENING.md). This is a completed
 - [x] Pause state-and-step compare-and-set prevents stale-state resume.
 - [x] Multiple source-linked conflicting quotes persisted without false
   verification. UI and audit distinguish conflicting claims.
+- [x] Normalized `WorkflowTarget` and `WorkflowConversation` entities for
+  mock fixtures and one opt-in test recipient, with persisted lifecycle.
 - [x] Idempotent, transactional per-workflow cost-accounting ledger and
   local-dashboard summary (default $5.00 ceiling).
 - [x] Offline/PostgreSQL regression tests for the above.
 - [ ] Live provider metering, preflight cost reservations, cross-workflow/day
   cap and actual budget enforcement before external paid action.
 - [ ] P1 complete: generalized free-text approvals, normalized
-  contact/conversation/call entities, public API auth, real E2E.
+  contacts/identities/call entities, public API auth, real E2E.
