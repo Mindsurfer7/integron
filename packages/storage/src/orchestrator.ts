@@ -6,6 +6,7 @@ import { PrismaDemoTaskService } from './prisma.ts';
 import { MockResearchPlanner, questionsFromFields, validateProposal,
   type ResearchPlanner } from '../../llm/src/planner.ts';
 import { extractQuotedFacts } from '../../core/src/evidence.ts';
+import { answerWorkflowOwnerQuestion, expireWorkflowOwnerQuestions, type OwnerIdentity } from './owner-questions.ts';
 import { authorizeTestText, authorizeWhatsAppTestText, type TestTextPolicy } from '../../transports/src/contracts.ts';
 
 /**
@@ -20,13 +21,16 @@ export class DurableOrchestrator {
   private readonly tdlibPolicy: TestTextPolicy;
   private readonly planner: ResearchPlanner;
   private readonly whatsappPolicy: TestTextPolicy;
+  private readonly owner: OwnerIdentity | undefined;
   constructor(db: PrismaClient,
     policy: TestTextPolicy = { enabled: false, allowedChatIds: new Set() },
     tdlibPolicy: TestTextPolicy = { enabled: false, allowedChatIds: new Set() },
     planner: ResearchPlanner = new MockResearchPlanner(),
-    whatsappPolicy: TestTextPolicy = { enabled: false, allowedChatIds: new Set() }) {
+    whatsappPolicy: TestTextPolicy = { enabled: false, allowedChatIds: new Set() },
+    owner?: OwnerIdentity) {
     this.db = db; this.policy = policy; this.tdlibPolicy = tdlibPolicy;
     this.planner = planner; this.whatsappPolicy = whatsappPolicy;
+    this.owner = owner;
   }
 
   async create(goal: unknown, options?: { transport?: string; targetChatId?: unknown }) {
@@ -88,7 +92,8 @@ export class DurableOrchestrator {
         facts: { orderBy: { createdAt: 'asc' } },
         costs: { orderBy: { createdAt: 'asc' } },
         targets: { orderBy: { createdAt: 'asc' } },
-        conversations: { orderBy: { createdAt: 'asc' } } }
+        conversations: { orderBy: { createdAt: 'asc' } },
+        ownerQuestions: { orderBy: { createdAt: 'asc' }, include: { notification: true } } }
     });
   }
 
@@ -100,10 +105,19 @@ export class DurableOrchestrator {
         facts: { orderBy: { createdAt: 'asc' } },
         costs: { orderBy: { createdAt: 'asc' } },
         targets: { orderBy: { createdAt: 'asc' } },
-        conversations: { orderBy: { createdAt: 'asc' } } }
+        conversations: { orderBy: { createdAt: 'asc' } },
+        ownerQuestions: { orderBy: { createdAt: 'asc' }, include: { notification: true } } }
     });
     if (!run) throw new DemoError(404, 'WORKFLOW_NOT_FOUND', 'Поручение не найдено');
     return run;
+  }
+
+  async answerOwnerText(workflowId: string, questionId: string, text: unknown) {
+    if (!UUID.test(workflowId)) {
+      throw new DemoError(404, 'WORKFLOW_NOT_FOUND', 'Поручение не найдено');
+    }
+    return answerWorkflowOwnerQuestion(this.db, questionId, text, 'local_web',
+      undefined, workflowId);
   }
 
   /** Safe on both queued jobs and questions already sent to Telegram. */
@@ -135,6 +149,13 @@ export class DurableOrchestrator {
         await tx.workflowConversation.updateMany({
           where: { workflowId: id, state: { not: 'mock_simulation' } },
           data: { state: completed ? 'completed' : 'cancelled' }
+        });
+        await tx.workflowOwnerQuestion.updateMany({
+          where: { workflowId: id, state: 'pending' }, data: { state: 'cancelled' }
+        });
+        await tx.workflowOwnerNotification.updateMany({
+          where: { question: { workflowId: id }, state: 'queued' },
+          data: { state: 'cancelled' }
         });
         await tx.workflowEvent.create({
           data: { workflowId: id, kind: completed ? 'completed' : 'stopped' }
@@ -326,19 +347,23 @@ export class DurableOrchestrator {
       });
       if (!received) throw new Error('Missing correlated text evidence');
       const quotes = extractQuotedFacts(received.body);
+      const needsOwner = quotes.some(fact => fact.status === 'conflicting');
       // Facts and state advance share a transaction. A concurrent stop clears
       // the lease, preventing a cancelled task from manufacturing a report.
       await this.db.$transaction(async tx => {
         const changed = await tx.workflowRun.updateMany({
           where: { id, leaseToken: token, step: 'process_external', state: 'running',
             leasedUntil: { gt: new Date() } },
-          data: { step: 'done', state: 'completed', finishedAt: new Date(),
+          data: { step: needsOwner ? 'await_conflict_review' : 'done',
+            state: needsOwner ? 'waiting_owner' : 'completed',
+            availableAt: needsOwner ? new Date(Date.now() + POLL_MS) : run.availableAt,
+            finishedAt: needsOwner ? null : new Date(),
             failures: 0, lastError: null, leaseToken: null, leasedUntil: null }
         });
         if (!changed.count) return;
         await tx.workflowConversation.updateMany({
           where: { workflowId: id, state: { not: 'mock_simulation' } },
-          data: { state: 'completed' }
+          data: { state: needsOwner ? 'needs_review' : 'completed' }
         });
         if (quotes.length) {
           await tx.workflowFact.createMany({
@@ -348,11 +373,54 @@ export class DurableOrchestrator {
             skipDuplicates: true
           });
         }
+        if (needsOwner) {
+          // Fixed safe prompt. Never echo untrusted chat text into owner Telegram.
+          // The answer is advisory data, not a permission for more sends or spending.
+          const question = await tx.workflowOwnerQuestion.create({
+            data: {
+              id: run.clarificationId, workflowId: id,
+              requestKey: 'conflict:' + received.id, sourceMessageId: received.id,
+              prompt: 'В ответе тестового собеседника обнаружены противоречивые сведения. ' +
+                'Укажи, что проверить вручную. Ответ будет сохранён, новых сообщений агент не отправит.',
+              ownerUserId: this.owner?.userId ?? null,
+              ownerChatId: this.owner?.chatId ?? null,
+              expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
+            }
+          });
+          if (this.owner) {
+            await tx.workflowOwnerNotification.create({ data: { questionId: question.id } });
+          }
+        }
         await tx.workflowEvent.create({
-          data: { workflowId: id, kind: 'text_reply_processed',
+          data: { workflowId: id, kind: needsOwner ? 'conflict_review_requested' : 'text_reply_processed',
             metadata: { extractedFacts: quotes.length } }
         });
       });
+    } else if (run.step === 'await_conflict_review') {
+      const question = await this.db.workflowOwnerQuestion.findUnique({
+        where: { id: run.clarificationId }
+      });
+      if (!question || question.workflowId !== id) throw new Error('Missing scoped owner question');
+      if (question.state === 'answered') {
+        await this.advance(id, token, run.step, {
+          step: 'done', state: 'completed', finishedAt: new Date()
+        }, 'conflict_review_recorded');
+      } else if (question.state === 'expired' || question.expiresAt <= new Date()) {
+        if (question.state === 'pending') await expireWorkflowOwnerQuestions(this.db);
+        await this.advance(id, token, run.step, {
+          step: 'done', state: 'failed', finishedAt: new Date()
+        }, 'conflict_review_timeout');
+      } else if (question.state === 'cancelled') {
+        await this.advance(id, token, run.step, {
+          step: 'done', state: 'cancelled', finishedAt: new Date()
+        }, 'conflict_review_cancelled');
+      } else {
+        await this.db.workflowRun.updateMany({
+          where: { id, leaseToken: token, state: 'waiting_owner', step: 'await_conflict_review' },
+          data: { leaseToken: null, leasedUntil: null,
+            availableAt: new Date(Date.now() + POLL_MS) }
+        });
+      }
     } else if (run.step === 'collect') {
       const tasks = new PrismaDemoTaskService(this.db);
       await tasks.create(run.goal, { taskId: id, questionId: run.clarificationId });
@@ -396,9 +464,15 @@ export class DurableOrchestrator {
         data: { ...data, failures: 0, lastError: null, leaseToken: null, leasedUntil: null }
       });
       if (changed.count) {
-        if (['send_unknown_review_required', 'send_rejected', 'external_reply_timeout'].includes(kind)) {
+        if (kind === 'conflict_review_recorded') {
           await tx.workflowConversation.updateMany({
-            where: { workflowId: id, state: 'waiting_external' },
+            where: { workflowId: id, state: 'needs_review' }, data: { state: 'reviewed' }
+          });
+        }
+        if (['send_unknown_review_required', 'send_rejected', 'external_reply_timeout',
+            'conflict_review_timeout', 'conflict_review_cancelled'].includes(kind)) {
+          await tx.workflowConversation.updateMany({
+            where: { workflowId: id, state: { in: ['waiting_external', 'needs_review'] } },
             data: { state: 'failed' }
           });
         }

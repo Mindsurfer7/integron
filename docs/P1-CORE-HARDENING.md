@@ -40,8 +40,10 @@ or enable live autonomous outreach, phone calls or production server access.
   only. Do not claim these amounts are invoices or that the ledger alone stops
   provider-side spending. Before enabling paid calls, add preflight budget
   reservations and reconcile actual provider costs.
-- Telegram free-text answers and approvals beyond fixed demo
-  `cheapest|fastest|defer` are still not supported.
+- Workflow-scoped free-text conflict review now has a separate experimental
+  implementation (see `P1-CONFLICT-HITL.md`); **general** free-text
+  clarification and high-risk approvals beyond legacy fixed demo choices
+  remain incomplete.
 - No general multi-organization live discovery, Contact/Identity/Call persistence model
   or public API authentication. The API remains localhost only.
 - An unavailable Telegram/WhatsApp native test account and unknown outbound

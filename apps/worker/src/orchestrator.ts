@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaDemoTaskService } from '../../../packages/storage/src/prisma.ts';
 import { DurableOrchestrator } from '../../../packages/storage/src/orchestrator.ts';
+import { readOwnerIdentity, expireWorkflowOwnerQuestions } from '../../../packages/storage/src/owner-questions.ts';
 import { plannerFromEnvironment } from '../../../packages/llm/src/planner.ts';
 import { readTestTextPolicy, readTdlibUserPolicy, readWhatsAppUserPolicy } from '../../../packages/transports/src/contracts.ts';
 
@@ -11,7 +12,7 @@ if (process.env.OUTBOUND_ENABLED !== undefined && process.env.OUTBOUND_ENABLED !
 const db = new PrismaClient();
 const orchestrator = new DurableOrchestrator(db, readTestTextPolicy(process.env),
   readTdlibUserPolicy(process.env), plannerFromEnvironment(process.env),
-  readWhatsAppUserPolicy(process.env));
+  readWhatsAppUserPolicy(process.env), readOwnerIdentity(process.env));
 const tasks = new PrismaDemoTaskService(db);
 let stopping = false;
 process.on('SIGINT', () => { stopping = true; });
@@ -22,6 +23,7 @@ try {
   while (!stopping) {
     try {
       await tasks.expirePending();
+      await expireWorkflowOwnerQuestions(db);
       const worked = await orchestrator.tick();
       if (!worked) await new Promise(resolve => setTimeout(resolve, 1000));
     } catch (error) {

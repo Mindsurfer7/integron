@@ -66,6 +66,7 @@ model WorkflowRun {
   costs           WorkflowCostEntry[]
   targets         WorkflowTarget[]
   conversations   WorkflowConversation[]
+  ownerQuestions   WorkflowOwnerQuestion[]
   maxCostCents    Int             @default(500)
   spentCents      Int             @default(0)
   demoTaskId      String?         @db.Uuid
@@ -202,4 +203,44 @@ model WorkflowConversation {
   updatedAt   DateTime       @updatedAt
   @@unique([workflowId, targetId])
   @@index([workflowId, state])
+}
+
+// P1 conflict clarification for an individual durable workflow.
+// Separate from legacy scripted DemoTask owner choices and from approvals.
+// Answer text is data, never permission to spend money or send messages.
+model WorkflowOwnerQuestion {
+  id              String                       @id @default(uuid()) @db.Uuid
+  workflowId      String                       @db.Uuid
+  workflow        WorkflowRun                  @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  requestKey      String
+  sourceMessageId String?                      @db.Uuid
+  prompt          String
+  kind            String                       @default("free_text")
+  ownerUserId     String?
+  ownerChatId     String?
+  state           String                       @default("pending")
+  answer          String?
+  answeredVia     String?
+  answeredAt      DateTime?
+  expiresAt       DateTime
+  createdAt       DateTime                     @default(now())
+  notification    WorkflowOwnerNotification?
+  @@unique([workflowId, requestKey])
+  @@index([workflowId, state])
+  @@index([state, expiresAt])
+}
+
+model WorkflowOwnerNotification {
+  id             String                @id @default(uuid()) @db.Uuid
+  questionId     String                @unique @db.Uuid
+  question       WorkflowOwnerQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  state          String                @default("queued")
+  attempts       Int                   @default(0)
+  leasedUntil    DateTime?
+  messageId      String?
+  lastError      String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  @@index([state, createdAt])
+  @@index([messageId])
 }
