@@ -96,6 +96,7 @@ const workflowList = document.querySelector('#workflow-list');
 const workflowDetail = document.querySelector('#workflow-detail');
 let activeWorkflowId = null;
 let workflowTimer = null;
+const ownerDrafts = new Map();
 async function refreshWorkflows() {
   const response = await fetch('/api/workflows');
   if (response.status === 404) return;
@@ -162,6 +163,43 @@ async function refreshWorkflows() {
       facts.append(element('small', 'Цитата: «' + f.quote + '» · сообщение ' + original.providerMessageId));
     }
     workflowDetail.append(facts);
+  }
+  if (active.ownerQuestions?.length) {
+    const inbox = element('section', undefined, 'tile');
+    inbox.append(element('h3', 'Уточнения владельца'));
+    inbox.append(element('small',
+      'Ответ — только заметка к поручению. Он не разрешает платежи и не запускает внешние отправки.'));
+    for (const q of active.ownerQuestions) {
+      const box = element('div', undefined, 'tile');
+      box.append(element('p', q.prompt));
+      box.append(element('small', 'Вопрос ' + q.id + ' · ' + q.state +
+        ' · срок: ' + new Date(q.expiresAt).toLocaleString()));
+      if (q.state === 'answered') {
+        box.append(element('p', 'Ответ владельца: ' + q.answer));
+      } else if (q.state === 'pending' && new Date(q.expiresAt) > new Date() &&
+          ['waiting_owner', 'paused'].includes(active.state)) {
+        const input = element('textarea');
+        input.rows = 3;
+        input.maxLength = 500;
+        input.placeholder = 'Что проверить или уточнить (2–500 символов)';
+        input.value = ownerDrafts.get(q.id) ?? '';
+        input.addEventListener('input', () => ownerDrafts.set(q.id, input.value));
+        box.append(input);
+        const button = element('button', 'Сохранить ответ', 'primary');
+        button.addEventListener('click', async () => {
+          try {
+            error.textContent = '';
+            await request('/api/workflows/' + active.id + '/owner-questions/' + q.id +
+              '/answer', 'POST', { text: input.value });
+            ownerDrafts.delete(q.id);
+            await refreshWorkflows();
+          } catch (err) { showError(err); }
+        });
+        box.append(button);
+      }
+      inbox.append(box);
+    }
+    workflowDetail.append(inbox);
   }
   if (active.demoTaskId) {
     const details = element('button', 'Открыть результаты и вопрос');
