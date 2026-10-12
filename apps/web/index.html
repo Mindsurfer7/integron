@@ -7,7 +7,7 @@
 *{box-sizing:border-box}body{margin:0}main{max-width:1000px;margin:auto;padding:28px 20px 70px}
 h1{font-size:2rem;margin:12px 0 6px}.muted{color:#98a5b3}p{line-height:1.55}
 .panel{background:#161d27;border:1px solid #303a48;border-radius:14px;padding:20px;margin:20px 0}
-textarea{width:100%;min-height:75px;resize:vertical;padding:12px;background:#0d1117;color:#fff;border:1px solid #445063;border-radius:9px;font:inherit}
+input,select{background:#0d1117;color:#fff;padding:10px;border:1px solid #445063;border-radius:9px;font:inherit;margin:8px}textarea{width:100%;min-height:75px;resize:vertical;padding:12px;background:#0d1117;color:#fff;border:1px solid #445063;border-radius:9px;font:inherit}
 button{cursor:pointer;border:1px solid #56708f;background:#294667;color:white;border-radius:9px;padding:11px 15px;font:inherit;margin:5px 7px 5px 0}button:hover{filter:brightness(1.2)}button:disabled{opacity:.45;cursor:not-allowed}
 button.primary{background:#168361;border-color:#168361}.badge{background:#163c33;border:1px solid #266653;color:#a3f6d1;border-radius:99px;padding:5px 12px;font-size:.85rem}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:10px}.tile{padding:14px;border:1px solid #384556;border-radius:10px}
@@ -20,9 +20,13 @@ button.primary{background:#168361;border-color:#168361}.badge{background:#163c33
 <section class="panel" id="detail" hidden><h2>Ход выполнения</h2><p id="task-status"></p><div id="results" class="grid"></div><div id="question"></div><h3>Журнал событий</h3><ul id="events"></ul><button id="stop" type="button">Остановить задачу</button></section>
 <section class="panel" id="workflow-panel" hidden>
 <h2>Долгие поручения · PostgreSQL</h2>
-<p class="muted">Очередь исполняется отдельным worker. Планирование, сбор ответов и ожидание владельца — пока только симуляция. Работает после перезапуска.</p>
+<p class="muted">Очередь исполняется отдельным worker. По умолчанию — симуляция. Тестовый Telegram-бот может писать только разрешённым приватным чатам после /start; без разрешения API откажет.</p>
 <form id="workflow-form"><label for="workflow-goal">Что поручить?</label>
 <textarea id="workflow-goal" maxlength="500" required>Сравни сроки и стоимость у трёх компаний</textarea>
+<label for="workflow-transport">Канал</label>
+<select id="workflow-transport"><option value="mock">Симуляция</option><option value="telegram_test">Telegram — только разрешённый тестовый чат</option></select>
+<div id="workflow-target" hidden><label for="workflow-chat">Telegram Chat ID тестового собеседника</label>
+<input id="workflow-chat" type="text" inputmode="numeric" placeholder="Числовой chat ID из allowlist"></div>
 <button class="primary" type="submit">Поставить в очередь</button></form>
 <div id="workflow-list"></div>
 <div id="workflow-detail"></div>

@@ -3,6 +3,7 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import { DemoError, type DemoTask } from '../../core/src/demo.ts';
 import { demoOrganizations } from '../../fixtures/src/index.ts';
 import { PrismaDemoTaskService } from './prisma.ts';
+import { authorizeTestText, type TestTextPolicy } from '../../transports/src/contracts.ts';
 
 /**
  * One durable step per lease. Steps have deterministic inputs and no live outbound.
@@ -12,16 +13,29 @@ import { PrismaDemoTaskService } from './prisma.ts';
  */
 export class DurableOrchestrator {
   private readonly db: PrismaClient;
-  constructor(db: PrismaClient) { this.db = db; }
+  private readonly policy: TestTextPolicy;
+  constructor(db: PrismaClient, policy: TestTextPolicy = { enabled: false, allowedChatIds: new Set() }) {
+    this.db = db;
+    this.policy = policy;
+  }
 
-  async create(goal: unknown) {
+  async create(goal: unknown, options?: { transport?: string; targetChatId?: unknown }) {
     if (typeof goal !== 'string' || goal.trim().length < 3 || goal.trim().length > 500) {
       throw new DemoError(400, 'INVALID_GOAL', 'Описание задачи должно содержать от 3 до 500 символов');
     }
+    const transport = options?.transport ?? 'mock';
+    if (transport !== 'mock' && transport !== 'telegram_test') {
+      throw new DemoError(400, 'INVALID_TRANSPORT', 'Недопустимый канал');
+    }
+    if (transport === 'mock' && options?.targetChatId !== undefined) {
+      throw new DemoError(400, 'UNEXPECTED_CHAT_ID', 'Chat ID допустим только для тестового канала');
+    }
+    const targetChatId = transport === 'telegram_test'
+      ? authorizeTestText(this.policy, options?.targetChatId) : null;
     const id = randomUUID();
     return this.db.$transaction(async tx => {
       const run = await tx.workflowRun.create({
-        data: { id, goal: goal.trim(), clarificationId: randomUUID() }
+        data: { id, goal: goal.trim(), clarificationId: randomUUID(), transport, targetChatId }
       });
       await tx.workflowEvent.create({ data: { workflowId: id, kind: 'created' } });
       return run;
@@ -31,7 +45,8 @@ export class DurableOrchestrator {
   async list() {
     return this.db.workflowRun.findMany({
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 100,
-      include: { events: { orderBy: { createdAt: 'asc' } } }
+      include: { events: { orderBy: { createdAt: 'asc' } },
+        delivery: true, messages: { orderBy: { createdAt: 'asc' } } }
     });
   }
 
@@ -72,6 +87,9 @@ export class DurableOrchestrator {
       if (changed.count) await tx.workflowEvent.create({
         data: { workflowId: id, kind: completed ? 'completed' : 'stopped' }
       });
+    });
+    await this.db.textDelivery.updateMany({
+      where: { workflowId: id, state: 'queued' }, data: { state: 'cancelled' }
     });
     // Concurrent "collect" could create its question just after the first get.
     // It cannot commit advancement once stop has cleared its lease.
@@ -132,7 +150,14 @@ export class DurableOrchestrator {
     const run = await this.db.workflowRun.findUniqueOrThrow({ where: { id } });
     if (run.leaseToken !== token || !ACTIVE.includes(run.state)) return;
 
-    if (run.step === 'plan') {
+    if (run.step === 'plan' && run.transport === 'telegram_test') {
+      authorizeTestText(this.policy, run.targetChatId);
+      await this.advance(id, token, run.step, {
+        step: 'send_text', state: 'running',
+        plan: { version: 1, transport: 'telegram_bot_test', outbound: 'allowlisted_test_only',
+          steps: ['plan', 'send_test_text', 'await_reply', 'finish'] }
+      }, 'planned');
+    } else if (run.step === 'plan') {
       const plan = {
         version: 1, transport: 'mock', outbound: false,
         steps: ['plan', 'collect_mock_responses', 'await_owner_choice', 'finish'],
@@ -141,6 +166,48 @@ export class DurableOrchestrator {
       await this.advance(id, token, run.step, {
         step: 'collect', state: 'running', plan: plan as Prisma.InputJsonValue
       }, 'planned');
+    } else if (run.step === 'send_text') {
+      const chatId = authorizeTestText(this.policy, run.targetChatId);
+      await this.db.$transaction(async tx => {
+        const updated = await tx.workflowRun.updateMany({
+          where: { id, leaseToken: token, step: 'send_text', state: 'running',
+            leasedUntil: { gt: new Date() } },
+          data: { state: 'waiting_external', step: 'await_external',
+            availableAt: new Date(Date.now() + POLL_MS), leaseToken: null, leasedUntil: null }
+        });
+        if (!updated.count) return;
+        await tx.textDelivery.create({
+          data: { workflowId: id, chatId,
+            body: 'Integron · тестовый запрос #' + id.slice(0, 8) + '\\n\\n' +
+              run.goal + '\\n\\nОтветьте reply на это сообщение.',
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) }
+        });
+        await tx.workflowEvent.create({ data: { workflowId: id, kind: 'text_queued' } });
+      });
+    } else if (run.step === 'await_external') {
+      const delivery = await this.db.textDelivery.findUnique({ where: { workflowId: id } });
+      if (delivery && (delivery.state === 'unknown' || delivery.state === 'failed')) {
+        await this.advance(id, token, run.step, {
+          step: 'done', state: 'failed', finishedAt: new Date()
+        }, delivery.state === 'unknown' ? 'send_unknown_review_required' : 'send_rejected');
+      } else if (delivery && delivery.expiresAt <= new Date()) {
+        await this.advance(id, token, run.step, {
+          step: 'done', state: 'failed', finishedAt: new Date()
+        }, 'external_reply_timeout');
+      } else {
+        await this.db.workflowRun.updateMany({
+          where: { id, leaseToken: token, step: 'await_external', state: 'waiting_external' },
+          data: { leasedUntil: null, leaseToken: null, availableAt: new Date(Date.now() + POLL_MS) }
+        });
+      }
+    } else if (run.step === 'process_external') {
+      const received = await this.db.textMessage.findFirst({
+        where: { workflowId: id, direction: 'in' }, orderBy: { createdAt: 'asc' }
+      });
+      if (!received) throw new Error('Missing correlated text evidence');
+      await this.advance(id, token, run.step, {
+        step: 'done', state: 'completed', finishedAt: new Date()
+      }, 'text_reply_processed');
     } else if (run.step === 'collect') {
       const tasks = new PrismaDemoTaskService(this.db);
       await tasks.create(run.goal, { taskId: id, questionId: run.clarificationId });
@@ -189,7 +256,7 @@ export class DurableOrchestrator {
   }
 }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const ACTIVE = ['queued', 'running', 'waiting_owner'];
+const ACTIVE = ['queued', 'running', 'waiting_owner', 'waiting_external'];
 const TERMINAL = ['completed', 'cancelled', 'failed'];
 const LEASE_MS = 30_000;
 const POLL_MS = 3_000;
