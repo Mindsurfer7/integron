@@ -81,3 +81,8 @@ P2.3 WhatsApp USER has a [research and local E2E gate](docs/P2-3-WHATSAPP-SPIKE.
 ## P1 — safe LLM planner + cited facts
 
 PostgreSQL workflow planning now has offline research fields by default, with explicit worker-only OpenAI opt-in. Incoming text produces conservative source-linked, **tentative** price/availability/delivery facts. These do not authorize any new recipient/action or constitute verified prices. [Details and setup](docs/P1-LLM-EVIDENCE.md).
+
+
+## Pausing long workflows
+
+PostgreSQL workflows now support pause/resume/stop via local API and UI, and authenticated owner Telegram commands `/wpause`, `/wresume`, `/wstop` with a workflow UUID. Already in-flight sends cannot be unsent; queued deliveries are preserved. See [docs/P1-WORKFLOW-CONTROLS.md](docs/P1-WORKFLOW-CONTROLS.md).

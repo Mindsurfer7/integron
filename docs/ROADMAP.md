@@ -33,6 +33,8 @@
 
 - **P1 (slice 3, 13 Oct 2026):** ограниченный AI-планировщик `price|availability|delivery|conditions` (mock по умолчанию; OpenAI opt-in только у worker), строгая проверка предложений, PostgreSQL `WorkflowFact` с дословными цитатами/offset/ID исходного сообщения, атомарное сохранение при завершении и просмотр в UI. Реальный AI API и межорганизационный E2E не проверялись. См. [P1-LLM-EVIDENCE.md](P1-LLM-EVIDENCE.md).
 
+- **P1 (slice 4, 13 Oct 2026):** pause/resume/stop для WorkflowRun через API, UI и авторизованного owner Telegram bot. Очередь сообщений не сбрасывается при паузе; replies во время паузы сохраняются и обрабатываются после resume. Проверки race/stop/queued-send — PostgreSQL tests. [P1-WORKFLOW-CONTROLS.md](P1-WORKFLOW-CONTROLS.md).
+
 ## 2. Этапы и зависимости
 
 **Критический путь:** P0 → P1 → P2 (минимум 1 реальный text adapter) → P3 → P6. P4 и P5 — исследовательские ветки для звонков WhatsApp/LINE, не блокируют пользу проекта. P7 — развитие. Везде ниже статус `[ ]` означает запланировано, не выполнено.
