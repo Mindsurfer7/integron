@@ -3,7 +3,7 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import { DemoError, type DemoTask } from '../../core/src/demo.ts';
 import { demoOrganizations } from '../../fixtures/src/index.ts';
 import { PrismaDemoTaskService } from './prisma.ts';
-import { authorizeTestText, type TestTextPolicy } from '../../transports/src/contracts.ts';
+import { authorizeTestText, authorizeWhatsAppTestText, type TestTextPolicy } from '../../transports/src/contracts.ts';
 
 /**
  * One durable step per lease. Steps have deterministic inputs and no live outbound.
@@ -15,10 +15,12 @@ export class DurableOrchestrator {
   private readonly db: PrismaClient;
   private readonly policy: TestTextPolicy;
   private readonly tdlibPolicy: TestTextPolicy;
+  private readonly whatsappPolicy: TestTextPolicy;
   constructor(db: PrismaClient,
     policy: TestTextPolicy = { enabled: false, allowedChatIds: new Set() },
-    tdlibPolicy: TestTextPolicy = { enabled: false, allowedChatIds: new Set() }) {
-    this.db = db; this.policy = policy; this.tdlibPolicy = tdlibPolicy;
+    tdlibPolicy: TestTextPolicy = { enabled: false, allowedChatIds: new Set() },
+    whatsappPolicy: TestTextPolicy = { enabled: false, allowedChatIds: new Set() }) {
+    this.db = db; this.policy = policy; this.tdlibPolicy = tdlibPolicy; this.whatsappPolicy = whatsappPolicy;
   }
 
   async create(goal: unknown, options?: { transport?: string; targetChatId?: unknown }) {
@@ -26,14 +28,14 @@ export class DurableOrchestrator {
       throw new DemoError(400, 'INVALID_GOAL', 'Описание задачи должно содержать от 3 до 500 символов');
     }
     const transport = options?.transport ?? 'mock';
-    if (!['mock', 'telegram_test', 'telegram_user_test'].includes(transport)) {
+    if (!['mock', 'telegram_test', 'telegram_user_test', 'whatsapp_user_test'].includes(transport)) {
       throw new DemoError(400, 'INVALID_TRANSPORT', 'Недопустимый канал');
     }
     if (transport === 'mock' && options?.targetChatId !== undefined) {
       throw new DemoError(400, 'UNEXPECTED_CHAT_ID', 'Chat ID допустим только для тестового канала');
     }
     const targetChatId = transport === 'mock' ? null
-      : authorizeTestText(this.policyFor(transport), options?.targetChatId);
+      : this.authorizeRecipient(transport, options?.targetChatId);
     const id = randomUUID();
     return this.db.$transaction(async tx => {
       const run = await tx.workflowRun.create({
@@ -45,7 +47,16 @@ export class DurableOrchestrator {
   }
 
   private policyFor(transport: string): TestTextPolicy {
-    return transport === 'telegram_user_test' ? this.tdlibPolicy : this.policy;
+    if (transport === 'telegram_user_test') return this.tdlibPolicy;
+    if (transport === 'whatsapp_user_test') return this.whatsappPolicy;
+    return this.policy;
+  }
+
+  private authorizeRecipient(transport: string, jid: unknown): string {
+    const policy = this.policyFor(transport);
+    return transport === 'whatsapp_user_test'
+      ? authorizeWhatsAppTestText(policy, jid)
+      : authorizeTestText(policy, jid);
   }
 
   async list() {
@@ -157,11 +168,11 @@ export class DurableOrchestrator {
     const run = await this.db.workflowRun.findUniqueOrThrow({ where: { id } });
     if (run.leaseToken !== token || !ACTIVE.includes(run.state)) return;
 
-    if (run.step === 'plan' && (run.transport === 'telegram_test' || run.transport === 'telegram_user_test')) {
-      authorizeTestText(this.policyFor(run.transport), run.targetChatId);
+    if (run.step === 'plan' && (run.transport === 'telegram_test' || run.transport === 'telegram_user_test' || run.transport === 'whatsapp_user_test')) {
+      this.authorizeRecipient(run.transport, run.targetChatId);
       await this.advance(id, token, run.step, {
         step: 'send_text', state: 'running',
-        plan: { version: 1, transport: run.transport === 'telegram_test' ? 'telegram_bot_test' : 'telegram_user_test', outbound: 'allowlisted_test_only',
+        plan: { version: 1, transport: run.transport === 'telegram_test' ? 'telegram_bot_test' : run.transport, outbound: 'allowlisted_test_only',
           steps: ['plan', 'send_test_text', 'await_reply', 'finish'] }
       }, 'planned');
     } else if (run.step === 'plan') {
@@ -185,7 +196,7 @@ export class DurableOrchestrator {
         if (!updated.count) return;
         await tx.textDelivery.create({
           data: { workflowId: id, chatId,
-            channel: run.transport === 'telegram_user_test' ? 'telegram_user_test' : 'telegram_bot_test',
+            channel: run.transport === 'telegram_test' ? 'telegram_bot_test' : run.transport,
             body: 'Integron · тестовый запрос #' + id.slice(0, 8) + '\n\n' +
               run.goal + '\n\nОтветьте reply на это сообщение.',
             expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) }
