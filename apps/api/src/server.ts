@@ -1,13 +1,23 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { DemoTaskStore, DemoError } from '../../../packages/core/src/demo.ts';
+import { SqliteDemoTaskRepository } from '../../../packages/storage/src/sqlite.ts';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
-// The first P0 slice deliberately uses Node's built-in HTTP server; Fastify,
-// persistence and real transports are NOT implemented yet.
-if ((process.env.RUNTIME_PROFILE ?? 'demo') !== 'demo' || process.env.OUTBOUND_ENABLED !== undefined && process.env.OUTBOUND_ENABLED !== 'false') {
-  throw new Error('P0 supports demo only. Set RUNTIME_PROFILE=demo and OUTBOUND_ENABLED=false.');
+// Both P0 profiles operate ONLY on mock contacts and fake transport. No live outbound.
+const runtime = process.env.RUNTIME_PROFILE ?? 'demo';
+if (runtime !== 'demo' && runtime !== 'local') {
+  throw new Error('Supported runtime profiles: demo and local only.');
 }
-const store = new DemoTaskStore();
+if (process.env.OUTBOUND_ENABLED !== undefined && process.env.OUTBOUND_ENABLED !== 'false') {
+  throw new Error('Live outbound calls/messages are forbidden in P0. Set OUTBOUND_ENABLED=false.');
+}
+const db = runtime === 'local'
+  ? new SqliteDemoTaskRepository(process.env.SQLITE_PATH ?? join(homedir(), '.integron', 'tasks.sqlite'))
+  : undefined;
+const store = new DemoTaskStore(db);
+process.once('exit', () => db?.close());
 const hostname = '127.0.0.1'; // never expose a no-auth demo to the network
 const rawPort = Number(process.env.PORT ?? '4317');
 if (!Number.isInteger(rawPort) || rawPort < 0 || rawPort > 65535) throw new Error('Invalid PORT');
@@ -61,7 +71,7 @@ const server = createServer(async (req, res) => {
       res.end(source);
       return;
     }
-    if (req.method === 'GET' && path === '/health') return json(res, 200, { ok: true, profile: 'demo', outboundEnabled: false, persistence: 'memory' });
+    if (req.method === 'GET' && path === '/health') return json(res, 200, { ok: true, profile: runtime, outboundEnabled: false, persistence: runtime === 'local' ? 'sqlite' : 'memory' });
     if (req.method === 'GET' && path === '/api/tasks') return json(res, 200, { tasks: store.list() });
     if (req.method === 'POST' && path === '/api/tasks') {
       const data = await body(req) as { goal?: unknown };
@@ -87,5 +97,5 @@ const server = createServer(async (req, res) => {
 server.listen(rawPort, hostname, () => {
   const address = server.address();
   const port = address && typeof address === 'object' ? address.port : rawPort;
-  console.log(`Integron DEMO running at http://${hostname}:${port} (no external messages/calls)`);
+  console.log(`Integron ${runtime.toUpperCase()} running at http://${hostname}:${port} (no external messages/calls)`);
 });

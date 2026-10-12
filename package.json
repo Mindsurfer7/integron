@@ -6,7 +6,8 @@
   "packageManager": "pnpm@10.15.1",
   "engines": { "node": ">=22.16.0" },
   "scripts": {
-    "dev:demo": "node --experimental-strip-types apps/api/src/server.ts",
-    "test": "node --experimental-strip-types --test tests/*.test.ts"
+    "dev:demo": "node --experimental-strip-types --experimental-sqlite apps/api/src/server.ts",
+    "dev:local": "RUNTIME_PROFILE=local OUTBOUND_ENABLED=false node --experimental-strip-types --experimental-sqlite apps/api/src/server.ts",
+    "test": "node --experimental-strip-types --experimental-sqlite --test tests/*.test.ts"
   }
 }
