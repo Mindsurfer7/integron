@@ -76,3 +76,15 @@ pnpm dev:demo               # purely simulated local UI
 For the opt-in Telegram USER worker, configure real credentials **only on your own Mac** and run `pnpm preflight:tdlib` before starting the worker. It validates configuration without logging secrets or initiating login. Successful preflight is **not** evidence that a TDLib native login/real message works. See [TDLib instructions](docs/P2-TDLIB-USER.md).
 
 P2.3 WhatsApp USER has a [research and local E2E gate](docs/P2-3-WHATSAPP-SPIKE.md), **not** an active adapter; no QR pairing or WhatsApp sends are enabled. A macOS CI job checks the credential-free TDLib unit tests, not real native ARM integration.
+
+
+## P2.3 WhatsApp USER (isolated opt-in experimental worker)
+
+The WhatsApp personal adapter is a **test-only** Baileys spike, not an authorized business messaging or production channel. Nothing connects to WhatsApp during default startup. Existing Telegram and demo remain unchanged. For **offline** test coverage without accounts:
+
+```sh
+pnpm test:whatsapp:unit
+pnpm test
+```
+
+On a dedicated, consenting test account only, configure private env flags and run `pnpm dev:agent-whatsapp` separately from the API/orchestrator; see [P2.3 manual setup & remaining live E2E gates](docs/P2-3-WHATSAPP-SPIKE.md). QR and linked session keys must stay exclusively on your own Mac, and session files are not encrypted at rest. No history reconciliation or production approval is claimed.
