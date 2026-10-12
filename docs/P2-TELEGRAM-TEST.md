@@ -44,7 +44,7 @@ Look at the workflow detail to see delivery state and evidence. Every outbound a
 - Agent bot only receives updates from private test chats; sender ID must equal chat ID. Replies must target the exact sent provider message.
 - Store only necessary message body, IDs and timestamps in a local PostgreSQL database; treat external text as *untrusted data*. No LLM tool calls from it.
 - The agent getUpdates poller is **single instance per agent bot**. Persistent cursor makes replay safe, but concurrent polling/offset race is not supported.
-- Queued send claimed atomically. Interrupted sending older than 35 seconds becomes UNKNOWN; no automatic resend because Telegram may have accepted it.
+- Health check verifies a functioning Bot API identity on startup; paced to at most one attempted message per private test chat per minute. Queued send claimed atomically. Interrupted sending older than 35 seconds becomes UNKNOWN; no automatic resend because Telegram may have accepted it.
 - Network timeouts and provider 5xx are UNKNOWN; definitive 4xx are failed.
 - API remains loopback only. Not safe to expose publicly without authentication and authorization.
 - A stop racing with a send already in flight may still result in a delivered message. No externally visible cancellation guarantee exists once dispatch begins.

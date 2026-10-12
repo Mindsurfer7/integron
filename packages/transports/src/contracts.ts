@@ -40,6 +40,7 @@ export interface TextTransportAdapter {
   readonly capabilities: TransportCapabilities;
   send(intent: TextSendIntent): Promise<TextSendReceipt>;
   receive(afterUpdateId: number): Promise<TransportUpdate[]>;
+  health(): Promise<boolean>;
 }
 export interface TestTextPolicy {
   enabled: boolean;

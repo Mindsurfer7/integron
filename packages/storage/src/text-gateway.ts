@@ -30,6 +30,14 @@ export async function flushTestTextOutbox(
       });
       continue;
     }
+    // Per-test-chat pacing: never send another inquiry to this recipient
+    // within a minute. Only 1-2 explicitly allowlisted private chats exist.
+    const recent = await db.textDelivery.findFirst({
+      where: { id: { not: row.id }, chatId: row.chatId,
+        state: { in: ['sending', 'sent', 'unknown', 'failed'] },
+        updatedAt: { gte: new Date(Date.now() - 60_000) } }
+    });
+    if (recent) continue;
     const locked = await db.textDelivery.updateMany({
       where: { id: row.id, state: 'queued' },
       data: { state: 'sending', attempts: { increment: 1 },

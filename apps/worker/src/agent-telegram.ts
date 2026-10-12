@@ -19,6 +19,7 @@ let stopped = false;
 process.on('SIGTERM', () => { stopped = true; });
 process.on('SIGINT', () => { stopped = true; });
 await db.$connect();
+if (!(await adapter.health())) throw new Error('Agent bot health check failed');
 console.log('Integron allowlisted Telegram TEST worker started; private chats only');
 try {
   while (!stopped) {

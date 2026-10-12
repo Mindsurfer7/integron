@@ -16,7 +16,7 @@ export class AgentTelegramTestAdapter implements TextTransportAdapter {
     this.token = token;
     this.http = http;
   }
-  private async call<T>(method: 'sendMessage' | 'getUpdates', payload: unknown): Promise<T> {
+  private async call<T>(method: 'sendMessage' | 'getUpdates' | 'getMe', payload: unknown): Promise<T> {
     const response = await this.http('https://api.telegram.org/bot' + this.token + '/' + method, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -37,6 +37,10 @@ export class AgentTelegramTestAdapter implements TextTransportAdapter {
       throw new Error('Telegram uncertain API result');
     }
     return json.result;
+  }
+  async health(): Promise<boolean> {
+    const result = await this.call<{ id: number; is_bot: boolean }>('getMe', {});
+    return Boolean(result?.is_bot && Number.isSafeInteger(result.id));
   }
   async send(intent: TextSendIntent): Promise<TextSendReceipt> {
     if (intent.body.length > 1024) throw new Error('Test text too long');
