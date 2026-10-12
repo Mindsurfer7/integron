@@ -58,6 +58,10 @@ model WorkflowRun {
   id              String          @id @db.Uuid
   goal            String
   clarificationId String          @db.Uuid
+  transport       String          @default("mock")
+  targetChatId    String?
+  delivery        TextDelivery?
+  messages        TextMessage[]
   demoTaskId      String?         @db.Uuid
   state           String          @default("queued")
   step            String          @default("plan")
@@ -83,4 +87,46 @@ model WorkflowEvent {
   metadata   Json?       @db.JsonB
   createdAt  DateTime    @default(now())
   @@index([workflowId, createdAt])
+}
+
+
+// Explicitly consented Telegram Bot test conversations. Never used for discovery.
+// No stored credentials; private chat IDs and message bodies remain only in the local DB.
+model TextDelivery {
+  id             String      @id @default(uuid()) @db.Uuid
+  workflowId     String      @unique @db.Uuid
+  workflow       WorkflowRun @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  channel        String      @default("telegram_bot_test")
+  chatId         String
+  body           String
+  state          String      @default("queued")
+  attempts       Int         @default(0)
+  leasedUntil    DateTime?
+  providerId     String?
+  expiresAt      DateTime
+  lastError      String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  @@index([state, createdAt])
+  @@index([chatId, providerId])
+}
+
+model TextMessage {
+  id                String      @id @default(uuid()) @db.Uuid
+  workflowId        String      @db.Uuid
+  workflow          WorkflowRun @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  channel           String
+  chatId            String
+  direction         String
+  providerMessageId String
+  replyToProviderId String?
+  body              String
+  createdAt         DateTime    @default(now())
+  @@unique([channel, chatId, providerMessageId, direction])
+  @@index([workflowId, createdAt])
+}
+
+model AgentTelegramCursor {
+  id           Int    @id
+  lastUpdateId BigInt @default(0)
 }
