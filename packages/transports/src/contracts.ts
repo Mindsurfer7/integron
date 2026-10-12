@@ -15,6 +15,9 @@ export interface TransportCapabilities {
 export const TRANSPORT_CAPABILITIES: readonly TransportCapabilities[] = [
   { channel: 'telegram_bot_test', identityKind: 'agent', privateText: 'experimental',
     initiateUnknownChat: 'unavailable', inboundReply: 'experimental',
+    voice: 'unavailable', runtime: ['macos', 'linux'] },
+  { channel: 'telegram_user_test', identityKind: 'agent', privateText: 'experimental',
+    initiateUnknownChat: 'unavailable', inboundReply: 'experimental',
     voice: 'unavailable', runtime: ['macos', 'linux'] }
 ];
 
@@ -73,4 +76,13 @@ export class TextPolicyError extends Error {
   readonly statusCode = 403;
   readonly code: string;
   constructor(code: string) { super(code); this.code = code; }
+}
+
+
+/** Separate opt-in boundary from the existing Bot API test channel. */
+export function readTdlibUserPolicy(env: Record<string, string | undefined>): TestTextPolicy {
+  return readTestTextPolicy({
+    TEST_TELEGRAM_ENABLED: env.TEST_TDLIB_ENABLED,
+    AGENT_TELEGRAM_ALLOWED_CHAT_IDS: env.TDLIB_ALLOWED_CHAT_IDS
+  });
 }

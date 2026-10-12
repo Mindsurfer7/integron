@@ -144,3 +144,10 @@
 - LiveKit voice + SIP: https://docs.livekit.io/agents/ и https://docs.livekit.io/telephony/
 
 > Описанные способности мессенджеров — продуктовые гипотезы/документированные возможности платформ. Они ещё **не реализованы и не испытаны в Integron**.
+
+## Current P2.2 implementation status (2026-10-12)
+
+- P2.2 TDLib USER adapter and private test worker: implemented as an experimental slice.
+- Native account authentication and real two-account send/reply smoke: **not tested** (requires local interactive credentials and consenting accounts).
+- Full P2.2 platform coverage (Mac + VPS), unknown delivery operator reconciliation and production security: incomplete.
+- See [P2-TDLIB-USER.md](P2-TDLIB-USER.md).

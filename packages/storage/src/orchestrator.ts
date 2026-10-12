@@ -14,9 +14,11 @@ import { authorizeTestText, type TestTextPolicy } from '../../transports/src/con
 export class DurableOrchestrator {
   private readonly db: PrismaClient;
   private readonly policy: TestTextPolicy;
-  constructor(db: PrismaClient, policy: TestTextPolicy = { enabled: false, allowedChatIds: new Set() }) {
-    this.db = db;
-    this.policy = policy;
+  private readonly tdlibPolicy: TestTextPolicy;
+  constructor(db: PrismaClient,
+    policy: TestTextPolicy = { enabled: false, allowedChatIds: new Set() },
+    tdlibPolicy: TestTextPolicy = { enabled: false, allowedChatIds: new Set() }) {
+    this.db = db; this.policy = policy; this.tdlibPolicy = tdlibPolicy;
   }
 
   async create(goal: unknown, options?: { transport?: string; targetChatId?: unknown }) {
@@ -24,14 +26,14 @@ export class DurableOrchestrator {
       throw new DemoError(400, 'INVALID_GOAL', 'Описание задачи должно содержать от 3 до 500 символов');
     }
     const transport = options?.transport ?? 'mock';
-    if (transport !== 'mock' && transport !== 'telegram_test') {
+    if (!['mock', 'telegram_test', 'telegram_user_test'].includes(transport)) {
       throw new DemoError(400, 'INVALID_TRANSPORT', 'Недопустимый канал');
     }
     if (transport === 'mock' && options?.targetChatId !== undefined) {
       throw new DemoError(400, 'UNEXPECTED_CHAT_ID', 'Chat ID допустим только для тестового канала');
     }
-    const targetChatId = transport === 'telegram_test'
-      ? authorizeTestText(this.policy, options?.targetChatId) : null;
+    const targetChatId = transport === 'mock' ? null
+      : authorizeTestText(this.policyFor(transport), options?.targetChatId);
     const id = randomUUID();
     return this.db.$transaction(async tx => {
       const run = await tx.workflowRun.create({
@@ -40,6 +42,10 @@ export class DurableOrchestrator {
       await tx.workflowEvent.create({ data: { workflowId: id, kind: 'created' } });
       return run;
     });
+  }
+
+  private policyFor(transport: string): TestTextPolicy {
+    return transport === 'telegram_user_test' ? this.tdlibPolicy : this.policy;
   }
 
   async list() {
@@ -151,11 +157,11 @@ export class DurableOrchestrator {
     const run = await this.db.workflowRun.findUniqueOrThrow({ where: { id } });
     if (run.leaseToken !== token || !ACTIVE.includes(run.state)) return;
 
-    if (run.step === 'plan' && run.transport === 'telegram_test') {
-      authorizeTestText(this.policy, run.targetChatId);
+    if (run.step === 'plan' && (run.transport === 'telegram_test' || run.transport === 'telegram_user_test')) {
+      authorizeTestText(this.policyFor(run.transport), run.targetChatId);
       await this.advance(id, token, run.step, {
         step: 'send_text', state: 'running',
-        plan: { version: 1, transport: 'telegram_bot_test', outbound: 'allowlisted_test_only',
+        plan: { version: 1, transport: run.transport === 'telegram_test' ? 'telegram_bot_test' : 'telegram_user_test', outbound: 'allowlisted_test_only',
           steps: ['plan', 'send_test_text', 'await_reply', 'finish'] }
       }, 'planned');
     } else if (run.step === 'plan') {
@@ -168,7 +174,7 @@ export class DurableOrchestrator {
         step: 'collect', state: 'running', plan: plan as Prisma.InputJsonValue
       }, 'planned');
     } else if (run.step === 'send_text') {
-      const chatId = authorizeTestText(this.policy, run.targetChatId);
+      const chatId = authorizeTestText(this.policyFor(run.transport), run.targetChatId);
       await this.db.$transaction(async tx => {
         const updated = await tx.workflowRun.updateMany({
           where: { id, leaseToken: token, step: 'send_text', state: 'running',
@@ -179,6 +185,7 @@ export class DurableOrchestrator {
         if (!updated.count) return;
         await tx.textDelivery.create({
           data: { workflowId: id, chatId,
+            channel: run.transport === 'telegram_user_test' ? 'telegram_user_test' : 'telegram_bot_test',
             body: 'Integron · тестовый запрос #' + id.slice(0, 8) + '\n\n' +
               run.goal + '\n\nОтветьте reply на это сообщение.',
             expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) }
