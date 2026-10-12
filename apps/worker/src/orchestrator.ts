@@ -1,13 +1,14 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaDemoTaskService } from '../../../packages/storage/src/prisma.ts';
 import { DurableOrchestrator } from '../../../packages/storage/src/orchestrator.ts';
+import { readTestTextPolicy, readTdlibUserPolicy } from '../../../packages/transports/src/contracts.ts';
 
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
 if (process.env.OUTBOUND_ENABLED !== undefined && process.env.OUTBOUND_ENABLED !== 'false') {
   throw new Error('Real outbound messages and calls are not enabled for this worker');
 }
 const db = new PrismaClient();
-const orchestrator = new DurableOrchestrator(db);
+const orchestrator = new DurableOrchestrator(db, readTestTextPolicy(process.env), readTdlibUserPolicy(process.env));
 const tasks = new PrismaDemoTaskService(db);
 let stopping = false;
 process.on('SIGINT', () => { stopping = true; });

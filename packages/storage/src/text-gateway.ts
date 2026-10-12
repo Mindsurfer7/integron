@@ -3,24 +3,28 @@ import { authorizeTestText, type TestTextPolicy, type TextTransportAdapter, type
 import { TelegramTestRejected } from '../../transports/src/telegram-test.ts';
 
 const CHANNEL = 'telegram_bot_test';
+export const TDLIB_ROUTE = { channel: 'telegram_user_test', transport: 'telegram_user_test' } as const;
+const BOT_ROUTE = { channel: CHANNEL, transport: 'telegram_test' } as const;
+type Route = { channel: string; transport: string };
 
 /** A single sender for opted-in tests. Atomic claims prevent competing sends;
  * an interrupted send is UNKNOWN and never automatically retried. */
 export async function flushTestTextOutbox(
-  db: PrismaClient, transport: TextTransportAdapter, policy: TestTextPolicy, limit = 2
+  db: PrismaClient, transport: Pick<TextTransportAdapter, 'send'>, policy: TestTextPolicy,
+  limit = 2, route: Route = BOT_ROUTE
 ): Promise<number> {
   if (!policy.enabled) return 0;
   await db.textDelivery.updateMany({
-    where: { state: 'sending', leasedUntil: { lt: new Date() } },
+    where: { channel: route.channel, state: 'sending', leasedUntil: { lt: new Date() } },
     data: { state: 'unknown', leasedUntil: null, lastError: 'Interrupted send; delivery outcome unknown' }
   });
   const queued = await db.textDelivery.findMany({
-    where: { state: 'queued' }, orderBy: { createdAt: 'asc' }, take: limit, include: { workflow: true }
+    where: { channel: route.channel, state: 'queued' }, orderBy: { createdAt: 'asc' }, take: limit, include: { workflow: true }
   });
   let sent = 0;
   for (const row of queued) {
     const valid = policy.allowedChatIds.has(row.chatId) &&
-      row.channel === CHANNEL && row.workflow.transport === 'telegram_test' &&
+      row.channel === route.channel && row.workflow.transport === route.transport &&
       row.workflow.targetChatId === row.chatId &&
       row.workflow.state === 'waiting_external' && row.workflow.step === 'await_external' &&
       row.expiresAt > new Date();
@@ -33,7 +37,7 @@ export async function flushTestTextOutbox(
     // Per-test-chat pacing: never send another inquiry to this recipient
     // within a minute. Only 1-2 explicitly allowlisted private chats exist.
     const recent = await db.textDelivery.findFirst({
-      where: { id: { not: row.id }, chatId: row.chatId,
+      where: { id: { not: row.id }, channel: route.channel, chatId: row.chatId,
         state: { in: ['sending', 'sent', 'unknown', 'failed'] },
         updatedAt: { gte: new Date(Date.now() - 60_000) } }
     });
@@ -63,7 +67,7 @@ export async function flushTestTextOutbox(
         });
         if (saved.count) {
           await tx.textMessage.create({
-            data: { workflowId: row.workflowId, channel: CHANNEL, chatId: row.chatId,
+            data: { workflowId: row.workflowId, channel: route.channel, chatId: row.chatId,
               direction: 'out', providerMessageId: receipt.providerMessageId, body: row.body }
           });
           await tx.workflowEvent.create({ data: { workflowId: row.workflowId, kind: 'text_sent' } });
@@ -73,8 +77,8 @@ export async function flushTestTextOutbox(
     } catch (e) {
       await db.textDelivery.updateMany({
         where: { id: row.id, state: 'sending' },
-        data: { state: e instanceof TelegramTestRejected ? 'failed' : 'unknown',
-          leasedUntil: null, lastError: e instanceof TelegramTestRejected ? 'Provider rejected send' : 'Send result unknown' }
+        data: { state: (e instanceof TelegramTestRejected || isDefinite(e)) ? 'failed' : 'unknown',
+          leasedUntil: null, lastError: (e instanceof TelegramTestRejected || isDefinite(e)) ? 'Provider rejected send' : 'Send result unknown' }
       });
     }
   }
@@ -85,7 +89,7 @@ export async function flushTestTextOutbox(
  * message ID, same workflow, active nonexpired deadline, and allowlisted chat.
  * Neither free text nor forward may create additional outbound actions. */
 export async function handleTestText(
-  db: PrismaClient, policy: TestTextPolicy, incoming: IncomingText
+  db: PrismaClient, policy: TestTextPolicy, incoming: IncomingText, route: Route = BOT_ROUTE
 ): Promise<boolean> {
   if (!policy.enabled || incoming.chatType !== 'private' ||
       incoming.senderId !== incoming.chatId ||
@@ -93,19 +97,19 @@ export async function handleTestText(
       !incoming.replyToProviderId || !incoming.body.trim() ||
       incoming.body.length > 2000) return false;
   const delivery = await db.textDelivery.findFirst({
-    where: { channel: CHANNEL, chatId: incoming.chatId,
+    where: { channel: route.channel, chatId: incoming.chatId,
       providerId: incoming.replyToProviderId, state: 'sent' }
   });
   if (!delivery || delivery.expiresAt <= new Date()) return false;
   return db.$transaction(async tx => {
     const changed = await tx.workflowRun.updateMany({
-      where: { id: delivery.workflowId, transport: 'telegram_test',
+      where: { id: delivery.workflowId, transport: route.transport,
         targetChatId: incoming.chatId, state: 'waiting_external', step: 'await_external' },
       data: { state: 'running', step: 'process_external', availableAt: new Date() }
     });
     if (!changed.count) return false;
     await tx.textMessage.create({
-      data: { workflowId: delivery.workflowId, channel: CHANNEL, chatId: incoming.chatId,
+      data: { workflowId: delivery.workflowId, channel: route.channel, chatId: incoming.chatId,
         direction: 'in', providerMessageId: incoming.providerMessageId,
         replyToProviderId: incoming.replyToProviderId, body: incoming.body.trim() }
     });
@@ -135,4 +139,9 @@ export async function pollTestText(
     processed++;
   }
   return processed;
+}
+
+
+function isDefinite(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && 'definite' in error && error.definite === true);
 }

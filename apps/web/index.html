@@ -24,7 +24,7 @@ button.primary{background:#168361;border-color:#168361}.badge{background:#163c33
 <form id="workflow-form"><label for="workflow-goal">Что поручить?</label>
 <textarea id="workflow-goal" maxlength="500" required>Сравни сроки и стоимость у трёх компаний</textarea>
 <label for="workflow-transport">Канал</label>
-<select id="workflow-transport"><option value="mock">Симуляция</option><option value="telegram_test">Telegram — только разрешённый тестовый чат</option></select>
+<select id="workflow-transport"><option value="mock">Симуляция</option><option value="telegram_test">Telegram Bot — тестовый чат</option><option value="telegram_user_test">Telegram USER (TDLib) — разрешённый тестовый контакт</option></select>
 <div id="workflow-target" hidden><label for="workflow-chat">Telegram Chat ID тестового собеседника</label>
 <input id="workflow-chat" type="text" inputmode="numeric" placeholder="Числовой chat ID из allowlist"></div>
 <button class="primary" type="submit">Поставить в очередь</button></form>

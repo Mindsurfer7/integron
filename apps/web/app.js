@@ -115,7 +115,7 @@ async function refreshWorkflows() {
   if (!active) return;
   workflowDetail.append(element('h3', 'Поручение #' + active.id.slice(0, 8)));
   workflowDetail.append(element('p', 'Состояние: ' + active.state + ', шаг: ' + active.step));
-  if (active.plan) workflowDetail.append(element('p', 'Канал: ' + (active.transport === 'mock' ? 'mock' : 'Telegram test') + ' · внешняя отправка: ' + (active.transport === 'mock' ? 'нет' : 'только allowlist')));
+  if (active.plan) workflowDetail.append(element('p', 'Канал: ' + (active.transport === 'mock' ? 'mock' : active.transport === 'telegram_test' ? 'Telegram Bot test' : 'Telegram USER TDLib test') + ' · внешняя отправка: ' + (active.transport === 'mock' ? 'нет' : 'только allowlist')));
   if (active.delivery) {
     workflowDetail.append(element('p', 'Доставка: ' + active.delivery.state +
       (active.delivery.state === 'unknown' ? ' · результат неизвестен, автоматической повторной отправки нет' : '')));
