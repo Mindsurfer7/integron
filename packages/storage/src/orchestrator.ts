@@ -209,7 +209,8 @@ export class DurableOrchestrator {
           data: { workflowId: id, chatId,
             channel: run.transport === 'telegram_user_test' ? 'telegram_user_test' : 'telegram_bot_test',
             body: 'Integron · тестовый запрос #' + id.slice(0, 8) + '\n\n' +
-              run.goal + '\n\nОтветьте reply на это сообщение.',
+              run.goal + '\n\nУточните: ' + researchQuestion +
+              '\n\nОтветьте reply на это сообщение.',
             expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) }
         });
         await tx.workflowEvent.create({ data: { workflowId: id, kind: 'text_queued' } });

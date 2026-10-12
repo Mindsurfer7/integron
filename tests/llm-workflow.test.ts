@@ -64,8 +64,10 @@ test('incoming Telegram quote becomes source-linked facts only upon durable comp
     updateId:1,providerMessageId:'712',chatId:'42',senderId:'42',chatType:'private',
     body,replyToProviderId:'711'
   }),true);
-  const restarted=new DurableOrchestrator(new PrismaClient(),consented);
+  const recoveryClient=new PrismaClient();
+  const restarted=new DurableOrchestrator(recoveryClient,consented);
   assert.equal(await restarted.tick(),run.id);
+  await recoveryClient.$disconnect();
   const result=await original.get(run.id);
   assert.equal(result.state,'completed');
   assert.deepEqual(result.facts.map(f=>f.field),['price','availability','delivery']);

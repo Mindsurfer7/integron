@@ -31,6 +31,8 @@
 
 - **P2 (первый узкий slice):** контракты `TextTransportAdapter`, детерминированный allowlist и Telegram **Bot API test** (только начавшие /start приватные test-чаты): отправка, нормализованные доказательства ответов, resume workflow и no-retry unknown. CI использует fake fetch; реальный E2E ещё не проверен. Это **не** Telegram USER (TDLib) и не реальная рассылка организациям. См. [P2-TELEGRAM-TEST.md](P2-TELEGRAM-TEST.md).
 
+- **P1 (slice 3, 13 Oct 2026):** ограниченный AI-планировщик `price|availability|delivery|conditions` (mock по умолчанию; OpenAI opt-in только у worker), строгая проверка предложений, PostgreSQL `WorkflowFact` с дословными цитатами/offset/ID исходного сообщения, атомарное сохранение при завершении и просмотр в UI. Реальный AI API и межорганизационный E2E не проверялись. См. [P1-LLM-EVIDENCE.md](P1-LLM-EVIDENCE.md).
+
 ## 2. Этапы и зависимости
 
 **Критический путь:** P0 → P1 → P2 (минимум 1 реальный text adapter) → P3 → P6. P4 и P5 — исследовательские ветки для звонков WhatsApp/LINE, не блокируют пользу проекта. P7 — развитие. Везде ниже статус `[ ]` означает запланировано, не выполнено.

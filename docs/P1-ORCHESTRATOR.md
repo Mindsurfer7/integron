@@ -44,3 +44,8 @@ No VPS needed; no Telegram credentials needed just to run the orchestrator. New 
 Integration tests cover restart, idempotent collect after crash, lease expiry, stop before/after creating a question and late answer rejection; CI uses disposable PostgreSQL. Multi-worker *orchestrator* leases are supported, but **Telegram getUpdates polling remains single-worker**. A lease alone is not exactly-once delivery of external effects.
 
 Remaining P1 work: normalized external messages/facts/evidence, richer plans, approval policies, pause/resume, reconciliation UX, production API security and load/chaos tests. Existing ROADMAP checkboxes are not automatically marked complete by this slice.
+
+
+## Slice 3 — read-only research fields and source-linked facts
+
+Research planning can now be supplied by an opt-in OpenAI structured-output planner, but the deterministic mock is the default. All proposals are validated and have no action/recipient authority. WorkflowFact keeps tentative facts with exact source spans and saves them atomically with completion. See [P1-LLM-EVIDENCE.md](P1-LLM-EVIDENCE.md).
