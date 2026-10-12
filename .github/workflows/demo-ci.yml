@@ -11,4 +11,4 @@ jobs:
         with:
           node-version: '22'
       - name: Verify mock domain tests (no secrets or API keys)
-        run: node --experimental-strip-types --test tests/*.test.ts
+        run: node --experimental-strip-types --experimental-sqlite --test tests/*.test.ts
