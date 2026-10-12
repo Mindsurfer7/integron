@@ -17,7 +17,8 @@ function simulateUpdate(task: DemoTask, act: (store: DemoTaskStore) => DemoTask)
 
 /** PostgreSQL P0 mock store. Version-based CAS prevents duplicate owner decisions. */
 export class PrismaDemoTaskService {
-  constructor(private readonly prisma: PrismaClient) {}
+  private readonly prisma: PrismaClient;
+  constructor(prisma: PrismaClient) { this.prisma = prisma; }
   async list(): Promise<DemoTask[]> {
     const rows = await this.prisma.demoTask.findMany({ orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
     return rows.map(row => fromJson(row.payload));
