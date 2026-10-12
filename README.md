@@ -1,59 +1,48 @@
 # Integron
 
-**Integron** — персональный AI-оператор, который по поручению владельца связывается с организациями, задаёт вопросы в мессенджерах или по телефону, дожидается ответов и составляет проверяемое сравнение предложений.
+Персональный AI-оператор для обращений к организациям: поиск контактов, уточнение цен и наличия по сообщениям и телефону, отчёт с источниками. **Текущий код — безопасная симуляция:** LLM, реальные звонки, WhatsApp, LINE и Telegram ещё не подключены.
 
-**Статус:** P0 prototype: локальный mock workflow и хранение задач в SQLite. Реальные каналы ещё не подключены.
+## Быстрый локальный запуск (без VPS)
 
-## Принципы
+Node.js 22.16+, macOS Apple Silicon или Linux:
 
-- **Local-first, cloud-ready:** одна кодовая база на macOS (включая Apple Silicon) и Linux VPS; сервер **не нужен** для первого запуска и тестирования.
-- **Messaging + voice:** Telegram, WhatsApp, LINE; обычная телефония через SIP/провайдера. Голосовые звонки в мессенджерах — экспериментальные адаптеры до проверки на целевых аккаунтах и ОС.
-- **Human-in-the-loop:** во время звонка агент может задать владельцу вопрос в Telegram, позже WhatsApp, дождаться ответа и продолжить тот же разговор либо корректно договориться вернуться с уточнением.
-- **Долгоживущие задачи:** ожидание ответов часами и днями, восстановление после перезапуска, дедупликация и аудит.
-- **Ограниченная автономность:** агент может узнавать цены и наличие, но не распоряжается деньгами, не принимает обязательств и не раскрывает чувствительные данные без отдельного разрешения.
+```bash
+corepack enable
+pnpm install
+pnpm dev:demo       # RAM; http://127.0.0.1:4317
+pnpm dev:local      # SQLite ~/.integron/tasks.sqlite
+```
+
+Поручение создаёт три вымышленных ответа и вопрос владельцу в веб-интерфейсе. Результат в режиме SQLite переживает перезапуск. Реальные исходящие сообщения и звонки запрещены.
+
+## Fastify и PostgreSQL — дополнительный runtime
+
+```bash
+pnpm dev:api:demo   # Fastify + RAM
+pnpm dev:api:local  # Fastify + SQLite
+```
+
+Чтобы проверить постоянное хранение в PostgreSQL на Mac без аренды сервера:
+
+```bash
+docker compose -f infra/compose/local-postgres.yml up -d
+export DATABASE_URL='postgresql://integron:integron_dev_only@127.0.0.1:5432/integron?schema=public'
+pnpm db:generate
+pnpm db:deploy
+pnpm dev:postgres
+```
+
+Тесты: `pnpm test`; `pnpm test:postgres` — **только на отдельной тестовой БД**: он удаляет строки mock-задач. Порт API привязан к `127.0.0.1`; доступ в интернет без аутентификации запрещён.
 
 ## Документация
 
-| Файл | Назначение |
-|---|---|
-| [docs/ROADMAP.md](docs/ROADMAP.md) | Этапы P0–P7, зависимости, задачи и критерии готовности |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Архитектура, контракты, модель данных, надёжность |
-| [docs/HUMAN-IN-THE-LOOP.md](docs/HUMAN-IN-THE-LOOP.md) | Уточнения владельцу во время сообщения или звонка |
-| [docs/PLATFORMS.md](docs/PLATFORMS.md) | Возможности Telegram/WhatsApp/LINE/телефонии и эксперименты |
-| [docs/RUNBOOK.md](docs/RUNBOOK.md) | Local/macOS, VPS/Linux, hybrid/Android, безопасность и тесты |
-| [AGENTS.md](AGENTS.md) | Правила реализации и порядок следующих изменений |
+- [План P0–P7](docs/ROADMAP.md)
+- [Архитектура](docs/ARCHITECTURE.md)
+- [Уточнения у владельца во время звонка](docs/HUMAN-IN-THE-LOOP.md)
+- [Поддержка платформ](docs/PLATFORMS.md)
+- [Инструкция для Mac и VPS](docs/RUNBOOK.md)
+- [Демо](docs/P0-FIRST-SLICE.md)
+- [SQLite](docs/P0-PERSISTENCE.md)
+- [Fastify + PostgreSQL](docs/P0-FASTIFY-POSTGRES.md)
 
-## Следующий шаг
-
-**P0:** mock demo и локальная SQLite persistence уже доступны. Далее Fastify, PostgreSQL/Prisma и реальный Telegram owner bot. См. [docs/P0-PERSISTENCE.md](docs/P0-PERSISTENCE.md).
-
-> Mock-прототип работает. Ни один реальный адаптер сообщений/звонков пока не реализован.
-## Первый работающий прототип (P0 / local demo)
-
-Работает без сервера, учётных записей, API-ключей и настоящих звонков на Node.js 22.16+:
-
-```bash
-corepack enable
-pnpm install
-pnpm dev:demo
-# http://127.0.0.1:4317
-pnpm test
-```
-
-Подробности: [docs/P0-FIRST-SLICE.md](docs/P0-FIRST-SLICE.md). **Все контакты, сообщения и цены пока фиктивные. В `dev:demo` задачи не переживают рестарт; `dev:local` сохраняет их в SQLite.**
-
-## Persistent local mode (P0 slice 2)
-
-Для хранения задач без Docker, VPS и платных сервисов (Node.js 22.16+):
-
-```bash
-corepack enable
-pnpm install
-pnpm dev:local
-# http://127.0.0.1:4317
-# данные: ~/.integron/tasks.sqlite
-```
-
-Останови сервер и запусти команду снова: задачи, mock-переписки, вопросы и решения сохранятся. Другой файл: `SQLITE_PATH=/path/to/tasks.sqlite pnpm dev:local`. Проверка: `pnpm test` (включая реальный HTTP-тест с рестартом).
-
-SQLite из Node.js 22 пока экспериментальный; этот storage рассчитан на один локальный процесс, а PostgreSQL/Prisma остаётся следующим этапом. См. [P0 persistence](docs/P0-PERSISTENCE.md).
+Никаких платных записей, платежей или предоставления личных данных без явного согласования с владельцем.
