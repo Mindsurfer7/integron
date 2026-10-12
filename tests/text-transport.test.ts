@@ -135,14 +135,14 @@ test('stop before sending, lost network response, duplicate reply and late answe
   assert.equal((await jobs.get(uncertain.id)).state, 'failed');
   assert.equal((await jobs.get(uncertain.id)).events.at(-1)?.kind, 'send_unknown_review_required');
 
-  const late = await jobs.create('Тест опоздавшего ответа', { transport: 'telegram_test', targetChatId: '42' });
+  const late = await jobs.create('Тест опоздавшего ответа', { transport: 'telegram_test', targetChatId: '43' });
   await jobs.tick();
   await jobs.tick();
   assert.equal(await flushTestTextOutbox(db, fake.adapter, policy), 1);
   await db.textDelivery.update({ where: { workflowId: late.id },
     data: { expiresAt: new Date(Date.now() - 1000) } });
   fake.updates([{ update_id: 200, message: { message_id: 400, text: 'Late',
-    from: { id: 42 }, chat: { id: 42, type: 'private' }, reply_to_message: { message_id: 711 } } }]);
+    from: { id: 43 }, chat: { id: 43, type: 'private' }, reply_to_message: { message_id: 711 } } }]);
   assert.equal(await pollTestText(db, fake.adapter, policy), 1);
   assert.equal((await jobs.get(late.id)).state, 'waiting_external');
   assert.equal(await db.textMessage.count({ where: { workflowId: late.id, direction: 'in' } }), 0);
