@@ -16,6 +16,8 @@ export interface WorkflowApi {
   get(id: string): Promise<unknown>;
   create(goal: unknown, options?: { transport?: string; targetChatId?: unknown }): Promise<unknown>;
   stop(id: string): Promise<unknown>;
+  pause(id: string): Promise<unknown>;
+  resume(id: string): Promise<unknown>;
 }
 
 export function buildFastifyApp(
@@ -93,6 +95,12 @@ export function buildFastifyApp(
     });
     app.get<{ Params: { id: string } }>('/api/workflows/:id', async request => ({
       workflow: await workflows.get(request.params.id)
+    }));
+    app.post<{ Params: { id: string } }>('/api/workflows/:id/pause', async request => ({
+      workflow: await workflows.pause(request.params.id)
+    }));
+    app.post<{ Params: { id: string } }>('/api/workflows/:id/resume', async request => ({
+      workflow: await workflows.resume(request.params.id)
     }));
     app.post<{ Params: { id: string } }>('/api/workflows/:id/stop', async request => ({
       workflow: await workflows.stop(request.params.id)

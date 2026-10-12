@@ -62,8 +62,10 @@ model WorkflowRun {
   targetChatId    String?
   delivery        TextDelivery?
   messages        TextMessage[]
+  facts           WorkflowFact[]
   demoTaskId      String?         @db.Uuid
   state           String          @default("queued")
+  pausedFrom      String?
   step            String          @default("plan")
   plan            Json?           @db.JsonB
   availableAt     DateTime        @default(now())
@@ -122,6 +124,7 @@ model TextMessage {
   replyToProviderId String?
   body              String
   createdAt         DateTime    @default(now())
+  facts             WorkflowFact[]
   @@unique([channel, chatId, providerMessageId, direction])
   @@index([workflowId, createdAt])
 }
@@ -129,4 +132,24 @@ model TextMessage {
 model AgentTelegramCursor {
   id           Int    @id
   lastUpdateId BigInt @default(0)
+}
+
+
+// Conservative source-linked facts. "tentative" means an unverified
+// third-party statement; never imply verified stock or prices.
+model WorkflowFact {
+  id           String      @id @default(uuid()) @db.Uuid
+  workflowId   String      @db.Uuid
+  workflow     WorkflowRun @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  messageId    String      @db.Uuid
+  message      TextMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  field        String
+  value        String
+  quote        String
+  startOffset  Int
+  endOffset    Int
+  status       String      @default("tentative")
+  createdAt    DateTime    @default(now())
+  @@unique([messageId, field, startOffset, endOffset])
+  @@index([workflowId, field])
 }

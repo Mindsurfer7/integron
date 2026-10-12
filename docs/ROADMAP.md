@@ -31,6 +31,8 @@
 
 - **P2 (первый узкий slice):** контракты `TextTransportAdapter`, детерминированный allowlist и Telegram **Bot API test** (только начавшие /start приватные test-чаты): отправка, нормализованные доказательства ответов, resume workflow и no-retry unknown. CI использует fake fetch; реальный E2E ещё не проверен. Это **не** Telegram USER (TDLib) и не реальная рассылка организациям. См. [P2-TELEGRAM-TEST.md](P2-TELEGRAM-TEST.md).
 
+- **P1 (slice 3, 13 Oct 2026):** ограниченный AI-планировщик `price|availability|delivery|conditions` (mock по умолчанию; OpenAI opt-in только у worker), строгая проверка предложений, PostgreSQL `WorkflowFact` с дословными цитатами/offset/ID исходного сообщения, атомарное сохранение при завершении и просмотр в UI. Реальный AI API и межорганизационный E2E не проверялись. См. [P1-LLM-EVIDENCE.md](P1-LLM-EVIDENCE.md).
+
 ## 2. Этапы и зависимости
 
 **Критический путь:** P0 → P1 → P2 (минимум 1 реальный text adapter) → P3 → P6. P4 и P5 — исследовательские ветки для звонков WhatsApp/LINE, не блокируют пользу проекта. P7 — развитие. Везде ниже статус `[ ]` означает запланировано, не выполнено.
@@ -165,13 +167,10 @@
 
 No personal account E2E, macOS ARM native library load, or WhatsApp messages are claimed by this offline follow-up.
 
-## P2.3 WhatsApp USER code slice (2026-10-12)
 
-- [x] Isolated `whatsapp_user_test` adapter with patched Baileys 6.7.22 optional dependency, two explicit local opt-in gates and private 1:1 allowlist.
-- [x] Outbox + workflow persistence through existing PostgreSQL tables, ack outcome UNKNOWN semantics, incoming reply correlation and stop.
-- [x] Synthetic unit and PostgreSQL integration tests; regular demo, Bot API and TDLib routes remain separate.
-- [x] UI correction for previously missing TDLib recipient and explicit experimental WhatsApp selection.
-- [ ] Real two-account WhatsApp E2E, QR, session recovery, missed-reply history replay, encrypted-at-rest session; platform acceptance Mac ARM + Linux.
-- [ ] WhatsApp production capability remains **unavailable** pending real E2E and policies. P2.3 as a whole remains incomplete.
+## P1 — pause/resume (2026-10-13)
 
-See [P2-3-WHATSAPP-SPIKE.md](P2-3-WHATSAPP-SPIKE.md).
+- [x] Durable paused state and preserved previous state; atomic API pause/resume transitions.
+- [x] Worker cannot claim paused workflow; lease invalidated on pause.
+- [x] UI pause/resume and stop from pause; resume does not create a second outbox.
+- [ ] Real-account E2E; in-flight send cannot be revoked after transport dispatch.

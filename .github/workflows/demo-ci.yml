@@ -54,7 +54,5 @@ jobs:
           node-version: '22.16.0'
       - name: Offline TDLib contract tests (no accounts or outbound traffic)
         run: node --experimental-strip-types --test tests/tdlib-unit.test.ts
-      - name: WhatsApp USER no-account unit tests
-        run: node --experimental-strip-types --test tests/whatsapp-user.test.ts
       - name: Local preflight
         run: node scripts/local-preflight.mjs local

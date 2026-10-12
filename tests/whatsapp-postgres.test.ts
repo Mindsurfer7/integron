@@ -33,7 +33,7 @@ async function fixture(fn: (db: PrismaClient, jobs: DurableOrchestrator) => Prom
   try {
     await db.workflowRun.deleteMany();
     await db.demoTask.deleteMany();
-    await fn(db, new DurableOrchestrator(db, undefined, undefined, policy));
+    await fn(db, new DurableOrchestrator(db, undefined, undefined, undefined, policy));
   } finally {
     await db.workflowRun.deleteMany();
     await db.demoTask.deleteMany();
@@ -64,7 +64,7 @@ test('Postgres fake WhatsApp -> confirmed outgoing -> correlated reply -> workfl
     assert.equal(await handleTestText(db, policy, { ...incoming, replyToProviderId: 'other' }, WHATSAPP_ROUTE), false);
     assert.equal(await handleTestText(db, policy, incoming, WHATSAPP_ROUTE), true);
     assert.equal(await handleTestText(db, policy, incoming, WHATSAPP_ROUTE), false);
-    const restarted = new DurableOrchestrator(db, undefined, undefined, policy);
+    const restarted = new DurableOrchestrator(db, undefined, undefined, undefined, policy);
     assert.equal((await restarted.get(run.id)).step, 'process_external');
     await restarted.tick();
     assert.equal((await restarted.get(run.id)).state, 'completed');

@@ -3,6 +3,9 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import { DemoError, type DemoTask } from '../../core/src/demo.ts';
 import { demoOrganizations } from '../../fixtures/src/index.ts';
 import { PrismaDemoTaskService } from './prisma.ts';
+import { MockResearchPlanner, questionsFromFields, validateProposal,
+  type ResearchPlanner } from '../../llm/src/planner.ts';
+import { extractQuotedFacts } from '../../core/src/evidence.ts';
 import { authorizeTestText, authorizeWhatsAppTestText, type TestTextPolicy } from '../../transports/src/contracts.ts';
 
 /**
@@ -15,12 +18,15 @@ export class DurableOrchestrator {
   private readonly db: PrismaClient;
   private readonly policy: TestTextPolicy;
   private readonly tdlibPolicy: TestTextPolicy;
+  private readonly planner: ResearchPlanner;
   private readonly whatsappPolicy: TestTextPolicy;
   constructor(db: PrismaClient,
     policy: TestTextPolicy = { enabled: false, allowedChatIds: new Set() },
     tdlibPolicy: TestTextPolicy = { enabled: false, allowedChatIds: new Set() },
+    planner: ResearchPlanner = new MockResearchPlanner(),
     whatsappPolicy: TestTextPolicy = { enabled: false, allowedChatIds: new Set() }) {
-    this.db = db; this.policy = policy; this.tdlibPolicy = tdlibPolicy; this.whatsappPolicy = whatsappPolicy;
+    this.db = db; this.policy = policy; this.tdlibPolicy = tdlibPolicy;
+    this.planner = planner; this.whatsappPolicy = whatsappPolicy;
   }
 
   async create(goal: unknown, options?: { transport?: string; targetChatId?: unknown }) {
@@ -52,18 +58,19 @@ export class DurableOrchestrator {
     return this.policy;
   }
 
-  private authorizeRecipient(transport: string, jid: unknown): string {
+  private authorizeRecipient(transport: string, recipient: unknown): string {
     const policy = this.policyFor(transport);
     return transport === 'whatsapp_user_test'
-      ? authorizeWhatsAppTestText(policy, jid)
-      : authorizeTestText(policy, jid);
+      ? authorizeWhatsAppTestText(policy, recipient)
+      : authorizeTestText(policy, recipient);
   }
 
   async list() {
     return this.db.workflowRun.findMany({
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 100,
       include: { events: { orderBy: { createdAt: 'asc' } },
-        delivery: true, messages: { orderBy: { createdAt: 'asc' } } }
+        delivery: true, messages: { orderBy: { createdAt: 'asc' } },
+        facts: { orderBy: { createdAt: 'asc' } } }
     });
   }
 
@@ -71,7 +78,8 @@ export class DurableOrchestrator {
     if (!UUID.test(id)) throw new DemoError(404, 'WORKFLOW_NOT_FOUND', 'Поручение не найдено');
     const run = await this.db.workflowRun.findUnique({
       where: { id }, include: { events: { orderBy: { createdAt: 'asc' } },
-        delivery: true, messages: { orderBy: { createdAt: 'asc' } } }
+        delivery: true, messages: { orderBy: { createdAt: 'asc' } },
+        facts: { orderBy: { createdAt: 'asc' } } }
     });
     if (!run) throw new DemoError(404, 'WORKFLOW_NOT_FOUND', 'Поручение не найдено');
     return run;
@@ -99,8 +107,8 @@ export class DurableOrchestrator {
     const state = completed ? 'completed' : 'cancelled';
     await this.db.$transaction(async tx => {
       const changed = await tx.workflowRun.updateMany({
-        where: { id, state: { in: ACTIVE } },
-        data: { state, step: 'done', leaseToken: null, leasedUntil: null, finishedAt: new Date() }
+        where: { id, state: { in: [...ACTIVE, 'paused'] } },
+        data: { state, pausedFrom: null, step: 'done', leaseToken: null, leasedUntil: null, finishedAt: new Date() }
       });
       if (changed.count) await tx.workflowEvent.create({
         data: { workflowId: id, kind: completed ? 'completed' : 'stopped' }
@@ -117,6 +125,40 @@ export class DurableOrchestrator {
         if (!(error instanceof DemoError && ['TASK_NOT_FOUND', 'TASK_FINISHED'].includes(error.code))) throw error;
       }
     }
+    return this.get(id);
+  }
+
+  /** Pause is a durable state, not a held lease. No new step can be claimed. */
+  async pause(id: string) {
+    const run = await this.get(id);
+    if (run.state === 'paused') return run;
+    if (TERMINAL.includes(run.state)) throw new DemoError(409, 'WORKFLOW_FINISHED', 'Поручение уже завершено');
+    await this.db.$transaction(async tx => {
+      const changed = await tx.workflowRun.updateMany({
+        where: { id, state: { in: ACTIVE } },
+        data: { state: 'paused', pausedFrom: run.state,
+          leaseToken: null, leasedUntil: null }
+      });
+      if (changed.count) await tx.workflowEvent.create({data:{workflowId:id,kind:'paused'}});
+    });
+    return this.get(id);
+  }
+
+  /** Restore the previous waiting/running state without replaying the outbox. */
+  async resume(id: string) {
+    const run = await this.get(id);
+    if (run.state !== 'paused') throw new DemoError(409, 'NOT_PAUSED', 'Поручение не на паузе');
+    if (!run.pausedFrom || !ACTIVE.includes(run.pausedFrom)) {
+      throw new DemoError(409, 'INVALID_PAUSE_STATE', 'Некорректное состояние паузы');
+    }
+    await this.db.$transaction(async tx => {
+      const changed = await tx.workflowRun.updateMany({
+        where: { id, state: 'paused', pausedFrom: run.pausedFrom },
+        data: { state: run.pausedFrom, pausedFrom: null, availableAt: new Date(),
+          leaseToken: null, leasedUntil: null }
+      });
+      if (changed.count) await tx.workflowEvent.create({data:{workflowId:id,kind:'resumed'}});
+    });
     return this.get(id);
   }
 
@@ -168,24 +210,38 @@ export class DurableOrchestrator {
     const run = await this.db.workflowRun.findUniqueOrThrow({ where: { id } });
     if (run.leaseToken !== token || !ACTIVE.includes(run.state)) return;
 
-    if (run.step === 'plan' && (run.transport === 'telegram_test' || run.transport === 'telegram_user_test' || run.transport === 'whatsapp_user_test')) {
-      this.authorizeRecipient(run.transport, run.targetChatId);
-      await this.advance(id, token, run.step, {
-        step: 'send_text', state: 'running',
-        plan: { version: 1, transport: run.transport === 'telegram_test' ? 'telegram_bot_test' : run.transport, outbound: 'allowlisted_test_only',
-          steps: ['plan', 'send_test_text', 'await_reply', 'finish'] }
-      }, 'planned');
-    } else if (run.step === 'plan') {
-      const plan = {
-        version: 1, transport: 'mock', outbound: false,
-        steps: ['plan', 'collect_mock_responses', 'await_owner_choice', 'finish'],
-        organizations: demoOrganizations.map(org => ({ id: org.id, name: org.name, channel: org.channel }))
-      };
-      await this.advance(id, token, run.step, {
-        step: 'collect', state: 'running', plan: plan as Prisma.InputJsonValue
-      }, 'planned');
+    if (run.step === 'plan') {
+      // A model may propose only information fields. It cannot choose a contact,
+      // identity, transport, tool or workflow state; deterministic policy owns those.
+      if (run.transport !== 'mock') {
+        this.authorizeRecipient(run.transport, run.targetChatId);
+      }
+      const proposal = validateProposal(await this.planner.propose(run.goal));
+      const research = { fields: proposal.fields, rationale: proposal.rationale };
+      if (run.transport === 'mock') {
+        const plan = {
+          version: 2, transport: 'mock', outbound: false, research,
+          steps: ['plan', 'collect_mock_responses', 'await_owner_choice', 'finish'],
+          organizations: demoOrganizations.map(org => ({ id: org.id, name: org.name, channel: org.channel }))
+        };
+        await this.advance(id, token, run.step, {
+          step: 'collect', state: 'running', plan: plan as Prisma.InputJsonValue
+        }, 'planned');
+      } else {
+        await this.advance(id, token, run.step, {
+          step: 'send_text', state: 'running',
+          plan: { version: 2, transport: run.transport === 'telegram_test' ?
+            'telegram_bot_test' : run.transport,
+            outbound: 'allowlisted_test_only', research,
+            steps: ['plan', 'send_test_text', 'await_reply', 'finish'] }
+        }, 'planned');
+      }
     } else if (run.step === 'send_text') {
-      const chatId = this.authorizeRecipient(run.transport, run.targetChatId);
+      const chatId = authorizeTestText(this.policyFor(run.transport), run.targetChatId);
+      const stored = run.plan as { research?: unknown } | null;
+      // Validate persisted model fields before interpolating into test message.
+      const proposal = validateProposal(stored?.research);
+      const researchQuestion = questionsFromFields(proposal.fields);
       await this.db.$transaction(async tx => {
         const updated = await tx.workflowRun.updateMany({
           where: { id, leaseToken: token, step: 'send_text', state: 'running',
@@ -198,7 +254,8 @@ export class DurableOrchestrator {
           data: { workflowId: id, chatId,
             channel: run.transport === 'telegram_test' ? 'telegram_bot_test' : run.transport,
             body: 'Integron · тестовый запрос #' + id.slice(0, 8) + '\n\n' +
-              run.goal + '\n\nОтветьте reply на это сообщение.',
+              run.goal + '\n\nУточните: ' + researchQuestion +
+              '\n\nОтветьте reply на это сообщение.',
             expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) }
         });
         await tx.workflowEvent.create({ data: { workflowId: id, kind: 'text_queued' } });
@@ -224,9 +281,30 @@ export class DurableOrchestrator {
         where: { workflowId: id, direction: 'in' }, orderBy: { createdAt: 'asc' }
       });
       if (!received) throw new Error('Missing correlated text evidence');
-      await this.advance(id, token, run.step, {
-        step: 'done', state: 'completed', finishedAt: new Date()
-      }, 'text_reply_processed');
+      const quotes = extractQuotedFacts(received.body);
+      // Facts and state advance share a transaction. A concurrent stop clears
+      // the lease, preventing a cancelled task from manufacturing a report.
+      await this.db.$transaction(async tx => {
+        const changed = await tx.workflowRun.updateMany({
+          where: { id, leaseToken: token, step: 'process_external', state: 'running',
+            leasedUntil: { gt: new Date() } },
+          data: { step: 'done', state: 'completed', finishedAt: new Date(),
+            failures: 0, lastError: null, leaseToken: null, leasedUntil: null }
+        });
+        if (!changed.count) return;
+        if (quotes.length) {
+          await tx.workflowFact.createMany({
+            data: quotes.map(q => ({ workflowId: id, messageId: received.id,
+              field: q.field, value: q.value, quote: q.quote,
+              startOffset: q.startOffset, endOffset: q.endOffset, status: q.status })),
+            skipDuplicates: true
+          });
+        }
+        await tx.workflowEvent.create({
+          data: { workflowId: id, kind: 'text_reply_processed',
+            metadata: { extractedFacts: quotes.length } }
+        });
+      });
     } else if (run.step === 'collect') {
       const tasks = new PrismaDemoTaskService(this.db);
       await tasks.create(run.goal, { taskId: id, questionId: run.clarificationId });

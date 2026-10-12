@@ -24,6 +24,8 @@ export async function flushTestTextOutbox(
   });
   let sent = 0;
   for (const row of queued) {
+    // Pause must preserve a queued delivery, never discard it as unauthorised.
+    if (row.workflow.state === 'paused') continue;
     const valid = policy.allowedChatIds.has(row.chatId) &&
       row.channel === route.channel && row.workflow.transport === route.transport &&
       row.workflow.targetChatId === row.chatId &&
@@ -55,6 +57,14 @@ export async function flushTestTextOutbox(
       if (route.channel === WHATSAPP_ROUTE.channel) authorizeWhatsAppTestText(policy, row.chatId);
       else authorizeTestText(policy, row.chatId);
       const state = await db.workflowRun.findUnique({ where: { id: row.workflowId } });
+      if (state?.state === 'paused') {
+        // We have not called the provider yet: release the claim for resume.
+        await db.textDelivery.updateMany({
+          where: { id: row.id, state: 'sending' },
+          data: { state: 'queued', leasedUntil: null, attempts: { decrement: 1 } }
+        });
+        continue;
+      }
       if (state?.state !== 'waiting_external' || state?.step !== 'await_external') {
         await db.textDelivery.updateMany({
           where: { id: row.id, state: 'sending' }, data: { state: 'cancelled', leasedUntil: null }

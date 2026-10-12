@@ -116,17 +116,31 @@ async function refreshWorkflows() {
   workflowDetail.append(element('h3', 'Поручение #' + active.id.slice(0, 8)));
   workflowDetail.append(element('p', 'Состояние: ' + active.state + ', шаг: ' + active.step));
   if (active.plan) workflowDetail.append(element('p', 'Канал: ' + (active.transport === 'mock' ? 'mock' : active.transport === 'telegram_test' ? 'Telegram Bot test' : active.transport === 'telegram_user_test' ? 'Telegram USER TDLib test' : 'WhatsApp USER experimental test') + ' · внешняя отправка: ' + (active.transport === 'mock' ? 'нет' : 'только allowlist')));
+  if (active.plan?.research?.fields) {
+    workflowDetail.append(element('p', 'План исследования: ' + active.plan.research.fields.join(', ')));
+  }
   if (active.delivery) {
     workflowDetail.append(element('p', 'Доставка: ' + active.delivery.state +
       (active.delivery.state === 'unknown' ? ' · результат неизвестен, автоматической повторной отправки нет' : '')));
   }
   if (active.messages?.length) {
     const transcript = element('div');
-    transcript.append(element('h3', 'Переписка (тестовые сообщения, канал указан выше)'));
+    transcript.append(element('h3', 'Переписка (тестовые сообщения; канал указан выше)'));
     for (const m of active.messages) {
       transcript.append(element('p', (m.direction === 'in' ? 'Получено: ' : 'Отправлено: ') + m.body));
     }
     workflowDetail.append(transcript);
+  }
+  if (active.facts?.length) {
+    const facts = element('div');
+    facts.append(element('h3', 'Факты и источники'));
+    for (const f of active.facts) {
+      const original = active.messages?.find(m => m.id === f.messageId);
+      if (!original || original.body.slice(f.startOffset, f.endOffset) !== f.quote) continue;
+      facts.append(element('p', f.field + ': ' + f.value + ' · непроверенное утверждение собеседника'));
+      facts.append(element('small', 'Цитата: «' + f.quote + '» · сообщение ' + original.providerMessageId));
+    }
+    workflowDetail.append(facts);
   }
   if (active.demoTaskId) {
     const details = element('button', 'Открыть результаты и вопрос');
@@ -134,6 +148,15 @@ async function refreshWorkflows() {
     workflowDetail.append(details);
   }
   if (!['completed', 'cancelled', 'failed'].includes(active.state)) {
+    const pause = element('button', active.state === 'paused' ? 'Продолжить поручение' : 'Пауза');
+    pause.addEventListener('click', async () => {
+      try {
+        await request('/api/workflows/' + active.id +
+          (active.state === 'paused' ? '/resume' : '/pause'), 'POST');
+        await refreshWorkflows();
+      } catch (err) { showError(err); }
+    });
+    workflowDetail.append(pause);
     const cancel = element('button', 'Остановить поручение');
     cancel.addEventListener('click', async () => {
       try { await request('/api/workflows/' + active.id + '/stop', 'POST'); await refreshWorkflows(); }
@@ -153,7 +176,7 @@ document.querySelector('#workflow-form').addEventListener('submit', async event 
     error.textContent = '';
     const goal = document.querySelector('#workflow-goal').value;
     const transport = document.querySelector('#workflow-transport').value;
-    const targetChatId = transport === 'mock' ? undefined : document.querySelector('#workflow-chat').value.trim();
+    const targetChatId = transport !== 'mock' ? document.querySelector('#workflow-chat').value.trim() : undefined;
     const { workflow } = await request('/api/workflows', 'POST', { goal, transport, targetChatId });
     activeWorkflowId = workflow.id;
     await refreshWorkflows();
@@ -168,9 +191,9 @@ refreshWorkflows().then(() => {
 
 const workflowTransport = document.querySelector('#workflow-transport');
 workflowTransport.addEventListener('change', () => {
-  const target = document.querySelector('#workflow-target');
-  target.hidden = workflowTransport.value === 'mock';
-  document.querySelector('#workflow-chat-label').textContent = workflowTransport.value === 'whatsapp_user_test'
-    ? 'WhatsApp JID (только разрешённый тестовый контакт)'
-    : 'Telegram Chat ID тестового собеседника';
+  document.querySelector('#workflow-target').hidden = workflowTransport.value === 'mock';
+  document.querySelector('#workflow-chat-label').textContent =
+    workflowTransport.value === 'whatsapp_user_test'
+      ? 'WhatsApp JID (разрешённый тестовый контакт)'
+      : 'Telegram Chat ID тестового собеседника';
 });

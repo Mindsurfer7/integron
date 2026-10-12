@@ -115,8 +115,3 @@ pnpm dev:demo
 ```
 
 No Telegram/WhatsApp account, API key, real outreach or VPS is required. `pnpm preflight:tdlib` verifies supplied local variables and native library path **without performing TDLib login**, so run it only after exporting the private variables locally. Real TDLib account tests still require interactive login; WhatsApp stays a research-only candidate. See [P2-TDLIB-USER.md](P2-TDLIB-USER.md) and [P2-3-WHATSAPP-SPIKE.md](P2-3-WHATSAPP-SPIKE.md).
-
-
-## P2.3 local WhatsApp USER experiment
-
-`pnpm test:whatsapp:unit` runs without accounts, network or DB. `pnpm dev:agent-whatsapp` is a dedicated disabled-by-default Baileys test worker and demands both `WHATSAPP_LIVE_CONNECT_ENABLED=true` and `TEST_WHATSAPP_USER_ENABLED=true` plus a separate `WHATSAPP_AGENT_JID` and 1–2 private allowlisted `WHATSAPP_ALLOWED_JIDS`. Only opt-in local terminals display a pairing QR. Do not put real JIDs, QR codes or keys in commits/logs. See [P2-3-WHATSAPP-SPIKE.md](P2-3-WHATSAPP-SPIKE.md) for limitations and acceptance.
