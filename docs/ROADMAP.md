@@ -206,3 +206,23 @@ See [P1-CORE-HARDENING.md](P1-CORE-HARDENING.md). This is a completed
   cap and actual budget enforcement before external paid action.
 - [ ] P1 complete: generalized free-text approvals, normalized
   contacts/identities/call entities, public API auth, real E2E.
+
+## P1.4 — source-conflict owner clarification (2026-10-13)
+
+See [P1-CONFLICT-HITL.md](P1-CONFLICT-HITL.md). This is **one tested
+sub-scenario**, not complete P1.4 or payment approval acceptance.
+
+- [x] Safe workflow-scoped free-text owner questions with UUID, workflow ID,
+  source message ID, owner identity, expiry and idempotent response.
+- [x] Human review triggered transactionally by conflicting claims in an
+  allowed test conversation. No speculative verification or automatic
+  follow-up triggered by the owner response.
+- [x] Verified Telegram owner reply-to or explicit `/reply <questionUUID>
+  <text>`; wrong chat/sender, stale and uncorrelated replies ignored.
+- [x] Separate durable owner message outbox (unknown send never auto-retried),
+  pause-safe delivery, stop/expiry handling and web inbox fallback on localhost.
+- [x] PostgreSQL restart, concurrency, wrong-parent, reply-to and expiry
+  regression tests.
+- [ ] Explicit action approvals (separate from advisory clarifications),
+  callId correlation / bounded live-call waits, arbitrary multiple open
+  questions on one active call, real phone E2E and full P1 acceptance.
