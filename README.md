@@ -76,3 +76,8 @@ pnpm dev:demo               # purely simulated local UI
 For the opt-in Telegram USER worker, configure real credentials **only on your own Mac** and run `pnpm preflight:tdlib` before starting the worker. It validates configuration without logging secrets or initiating login. Successful preflight is **not** evidence that a TDLib native login/real message works. See [TDLib instructions](docs/P2-TDLIB-USER.md).
 
 P2.3 WhatsApp USER has a [research and local E2E gate](docs/P2-3-WHATSAPP-SPIKE.md), **not** an active adapter; no QR pairing or WhatsApp sends are enabled. A macOS CI job checks the credential-free TDLib unit tests, not real native ARM integration.
+
+
+## P1 — safe LLM planner + cited facts
+
+PostgreSQL workflow planning now has offline research fields by default, with explicit worker-only OpenAI opt-in. Incoming text produces conservative source-linked, **tentative** price/availability/delivery facts. These do not authorize any new recipient/action or constitute verified prices. [Details and setup](docs/P1-LLM-EVIDENCE.md).
