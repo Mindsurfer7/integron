@@ -164,3 +164,14 @@
 - [ ] Production WhatsApp adapter (not created; feature remains unavailable).
 
 No personal account E2E, macOS ARM native library load, or WhatsApp messages are claimed by this offline follow-up.
+
+## P2.3 WhatsApp USER code slice (2026-10-12)
+
+- [x] Isolated `whatsapp_user_test` adapter with patched Baileys 6.7.22 optional dependency, two explicit local opt-in gates and private 1:1 allowlist.
+- [x] Outbox + workflow persistence through existing PostgreSQL tables, ack outcome UNKNOWN semantics, incoming reply correlation and stop.
+- [x] Synthetic unit and PostgreSQL integration tests; regular demo, Bot API and TDLib routes remain separate.
+- [x] UI correction for previously missing TDLib recipient and explicit experimental WhatsApp selection.
+- [ ] Real two-account WhatsApp E2E, QR, session recovery, missed-reply history replay, encrypted-at-rest session; platform acceptance Mac ARM + Linux.
+- [ ] WhatsApp production capability remains **unavailable** pending real E2E and policies. P2.3 as a whole remains incomplete.
+
+See [P2-3-WHATSAPP-SPIKE.md](P2-3-WHATSAPP-SPIKE.md).
