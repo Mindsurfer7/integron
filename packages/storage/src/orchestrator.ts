@@ -237,7 +237,7 @@ export class DurableOrchestrator {
         }, 'planned');
       }
     } else if (run.step === 'send_text') {
-      const chatId = authorizeTestText(this.policyFor(run.transport), run.targetChatId);
+      const chatId = this.authorizeRecipient(run.transport, run.targetChatId);
       const stored = run.plan as { research?: unknown } | null;
       // Validate persisted model fields before interpolating into test message.
       const proposal = validateProposal(stored?.research);
