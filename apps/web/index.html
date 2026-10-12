@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ru"><head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Integron • Local Demo</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,sans-serif;background:#0d1117;color:#e6edf3}
+*{box-sizing:border-box}body{margin:0}main{max-width:1000px;margin:auto;padding:28px 20px 70px}
+h1{font-size:2rem;margin:12px 0 6px}.muted{color:#98a5b3}p{line-height:1.55}
+.panel{background:#161d27;border:1px solid #303a48;border-radius:14px;padding:20px;margin:20px 0}
+textarea{width:100%;min-height:75px;resize:vertical;padding:12px;background:#0d1117;color:#fff;border:1px solid #445063;border-radius:9px;font:inherit}
+button{cursor:pointer;border:1px solid #56708f;background:#294667;color:white;border-radius:9px;padding:11px 15px;font:inherit;margin:5px 7px 5px 0}button:hover{filter:brightness(1.2)}button:disabled{opacity:.45;cursor:not-allowed}
+button.primary{background:#168361;border-color:#168361}.badge{background:#163c33;border:1px solid #266653;color:#a3f6d1;border-radius:99px;padding:5px 12px;font-size:.85rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:10px}.tile{padding:14px;border:1px solid #384556;border-radius:10px}
+.tile strong{display:block;margin-bottom:7px}.tile small{color:#9bacbe}ul{padding-left:20px}li{margin:8px 0}code{color:#a3cdf5;word-break:break-word}
+#error{color:#ff9090;min-height:1.3em}
+</style></head><body><main>
+<div><span class="badge">DEMO · без внешних запросов</span><h1>Integron</h1><p class="muted">Локальный прототип: три вымышленные организации, симулированные сообщения и вопрос владельцу. Никакого настоящего AI, WhatsApp, LINE или телефонии.</p></div>
+<section class="panel"><h2>Новое поручение</h2><form id="task-form"><label for="goal">Что нужно узнать?</label><textarea id="goal" maxlength="500" required>Узнай стоимость и сроки услуги в трёх клиниках</textarea><button class="primary" type="submit">Запустить симуляцию</button></form><p id="error" role="alert"></p></section>
+<section class="panel"><h2>Задачи</h2><div id="tasks" class="muted">Пока нет задач.</div></section>
+<section class="panel" id="detail" hidden><h2>Ход выполнения</h2><p id="task-status"></p><div id="results" class="grid"></div><div id="question"></div><h3>Журнал событий</h3><ul id="events"></ul><button id="stop" type="button">Остановить задачу</button></section>
+</main><script type="module" src="/app.js"></script></body></html>

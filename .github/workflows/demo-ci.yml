@@ -1,0 +1,14 @@
+name: P0 demo smoke tests
+on:
+  push:
+  pull_request:
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify mock domain tests (no secrets or API keys)
+        run: node --experimental-strip-types --test tests/*.test.ts
