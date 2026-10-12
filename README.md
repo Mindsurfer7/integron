@@ -62,3 +62,17 @@ pnpm dev:postgres
 ## Telegram USER TDLib (P2.2 experimental)
 
 Added opt-in, private 1–2 test-chat workflow through native TDLib. Real interactive account login and a working native tdjson library are required. CLI: pnpm dev:agent-tdlib. Existing bot and mock flows remain separate. Full setup and limitations: [docs/P2-TDLIB-USER.md](docs/P2-TDLIB-USER.md). No real-account E2E confirmed yet.
+
+
+## P2.2 offline verification and P2.3 research (no personal credentials)
+
+```sh
+pnpm preflight:local         # no Docker/Telegram account required
+pnpm test:tdlib:unit        # mocked TDLib, no native lib/network
+pnpm test                   # RAM/SQLite + TDLib offline tests
+pnpm dev:demo               # purely simulated local UI
+```
+
+For the opt-in Telegram USER worker, configure real credentials **only on your own Mac** and run `pnpm preflight:tdlib` before starting the worker. It validates configuration without logging secrets or initiating login. Successful preflight is **not** evidence that a TDLib native login/real message works. See [TDLib instructions](docs/P2-TDLIB-USER.md).
+
+P2.3 WhatsApp USER has a [research and local E2E gate](docs/P2-3-WHATSAPP-SPIKE.md), **not** an active adapter; no QR pairing or WhatsApp sends are enabled. A macOS CI job checks the credential-free TDLib unit tests, not real native ARM integration.
