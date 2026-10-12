@@ -157,3 +157,36 @@ test('stuck sending is recovered as UNKNOWN without repeating the request', { sk
     await prisma.telegramPollingCursor.deleteMany({});
   } finally { await prisma.$disconnect(); }
 });
+
+test('Telegram command authorization, stop, and uncorrelated text are fail-closed', { skip: !dbAvailable }, async () => {
+  const prisma = new PrismaClient();
+  try {
+    await prisma.$connect();
+    await prisma.telegramPollingCursor.deleteMany({});
+    await prisma.demoTask.deleteMany({});
+    const tasks = new PrismaDemoTaskService(prisma);
+    const task = await tasks.create('Команда остановки');
+    const mock = mockTelegram();
+    await handleOwnerUpdate(prisma, mock.bot, {
+      update_id: 201, message: { message_id: 21, from: { id: 42 }, chat: { id: 43 }, text: 'cheapest' }
+    });
+    assert.equal((await tasks.get(task.id)).state, 'waiting_owner');
+    await handleOwnerUpdate(prisma, mock.bot, {
+      update_id: 202, message: { message_id: 22, from: { id: 42 }, chat: { id: 12345 },
+        text: '/stop ' + task.id }
+    });
+    assert.equal((await tasks.get(task.id)).state, 'waiting_owner');
+    await handleOwnerUpdate(prisma, mock.bot, {
+      update_id: 203, message: { message_id: 23, from: { id: 42 }, chat: { id: 43 },
+        text: '/stop ' + task.id }
+    });
+    assert.equal((await tasks.get(task.id)).state, 'cancelled');
+    assert.equal((await prisma.ownerNotification.findUniqueOrThrow({
+      where: { clarificationId: task.question.id }
+    })).state, 'cancelled');
+    await assert.rejects(() => tasks.answerQuestion(task.question.id, 'cheapest'),
+      (error: unknown) => error instanceof DemoError && error.code === 'QUESTION_CLOSED');
+    await prisma.demoTask.deleteMany({});
+    await prisma.telegramPollingCursor.deleteMany({});
+  } finally { await prisma.$disconnect(); }
+});
