@@ -70,8 +70,11 @@ test('P1 durable outbox, owner-only correlated reply, duplicate delivery and res
     };
     mock.setUpdates([authorized]);
     assert.equal(await pollOwnerUpdates(prisma, mock.bot), 1);
-    const restartedService = new PrismaDemoTaskService(new PrismaClient());
-    assert.equal((await restartedService.get(a.id)).state, 'completed');
+    const secondClient = new PrismaClient();
+    try {
+      const restartedService = new PrismaDemoTaskService(secondClient);
+      assert.equal((await restartedService.get(a.id)).state, 'completed');
+    } finally { await secondClient.$disconnect(); }
     assert.equal((await taskService.get(b.id)).state, 'waiting_owner');
     assert.equal((await prisma.ownerClarification.findUniqueOrThrow({ where: { id: a.question.id } })).state, 'answered');
     assert.equal(await pollOwnerUpdates(prisma, mock.bot), 0);
