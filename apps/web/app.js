@@ -131,6 +131,15 @@ async function refreshWorkflows() {
         ' · $' + (cost.amountCents / 100).toFixed(2)));
     }
   }
+  if (active.targets?.length) {
+    workflowDetail.append(element('p', 'Цели: ' + active.targets.length +
+      ' · источник: ' + (active.transport === 'mock' ? 'фиктивные организации' : 'разрешённый тестовый собеседник')));
+    for (const target of active.targets) {
+      const conversation = active.conversations?.find(c => c.targetId === target.id);
+      workflowDetail.append(element('small', target.label + ' · ' + target.channel +
+        ' · ' + (conversation?.state ?? 'planned')));
+    }
+  }
   if (active.delivery) {
     workflowDetail.append(element('p', 'Доставка: ' + active.delivery.state +
       (active.delivery.state === 'unknown' ? ' · результат неизвестен, автоматической повторной отправки нет' : '')));
