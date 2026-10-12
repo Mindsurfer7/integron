@@ -6,7 +6,7 @@
 |---|---|---|---|---|---|---|
 | Telegram Bot API (только тестовый агент-бот, явный allowlist и /start) | да, после /start | да, reply-to | нет | experimental | experimental | отдельный токен, не подходит для первого сообщения незнакомцу |
 | Telegram Bot API (владельцу) | да, после /start | да | нет | да | да | проверять owner chat/user ID |
-| Telegram USER/TDLib | возможны | да | отдельный сложный spike | да | да | ограничения новых диалогов, anti-spam |
+| Telegram USER/TDLib | только 1–2 opt-in test контакта, экспериментально | reply-to, экспериментально | отдельный voice spike | macOS требует native tdjson, live E2E не проверен | Linux native tdjson, live E2E не проверен | защита от спама, ограничение аккаунта |
 | WhatsApp USER / Baileys/WAHA | экспериментально | да | не включено в text SDK | да | да | неофициальные API, ban risk |
 | WhatsApp Web / Playwright | через UI | через UI | объявлены звонки Web, audio bridge не проверен | spike | spike | feature rollout, WebRTC, UI ломается |
 | LINE Chrome | UI automation | UI automation | не поддерживает звонки | spike | spike | ограничения сессии и клиента |

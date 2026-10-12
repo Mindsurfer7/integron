@@ -57,3 +57,8 @@ pnpm dev:postgres
 ## P2 — тестовый Telegram-адаптер (с реальными сообщениями только для allowlist)
 
 В PostgreSQL-профиле можно подключить отдельного Telegram Bot API агента, который общается исключительно с одним-двумя своими тестовыми private чатами после /start. Требуются отдельный BotFather-токен и явный TEST_TELEGRAM_ENABLED=true. Bot API не заменяет Telegram USER/TDLib и не может инициировать сообщение произвольной организации. Инструкция: [docs/P2-TELEGRAM-TEST.md](docs/P2-TELEGRAM-TEST.md).
+
+
+## Telegram USER TDLib (P2.2 experimental)
+
+Added opt-in, private 1–2 test-chat workflow through native TDLib. Real interactive account login and a working native tdjson library are required. CLI: pnpm dev:agent-tdlib. Existing bot and mock flows remain separate. Full setup and limitations: [docs/P2-TDLIB-USER.md](docs/P2-TDLIB-USER.md). No real-account E2E confirmed yet.
