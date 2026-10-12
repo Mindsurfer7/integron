@@ -70,7 +70,8 @@ export class DurableOrchestrator {
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 100,
       include: { events: { orderBy: { createdAt: 'asc' } },
         delivery: true, messages: { orderBy: { createdAt: 'asc' } },
-        facts: { orderBy: { createdAt: 'asc' } } }
+        facts: { orderBy: { createdAt: 'asc' } },
+        costs: { orderBy: { createdAt: 'asc' } } }
     });
   }
 
@@ -79,7 +80,8 @@ export class DurableOrchestrator {
     const run = await this.db.workflowRun.findUnique({
       where: { id }, include: { events: { orderBy: { createdAt: 'asc' } },
         delivery: true, messages: { orderBy: { createdAt: 'asc' } },
-        facts: { orderBy: { createdAt: 'asc' } } }
+        facts: { orderBy: { createdAt: 'asc' } },
+        costs: { orderBy: { createdAt: 'asc' } } }
     });
     if (!run) throw new DemoError(404, 'WORKFLOW_NOT_FOUND', 'Поручение не найдено');
     return run;
