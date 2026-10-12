@@ -103,6 +103,15 @@ export function buildFastifyApp(
     app.post<{ Params: { id: string } }>('/api/workflows/:id/resume', async request => ({
       workflow: await workflows.resume(request.params.id)
     }));
+    // Loopback-only owner inbox fallback. This records clarification text but
+    // NEVER approves payment, sends external messages, or changes contact policy.
+    app.post<{ Params: { id: string; questionId: string }; Body: { text?: unknown } }>(
+      '/api/workflows/:id/owner-questions/:questionId/answer', async request => ({
+        question: await workflows.answerOwnerText(
+          request.params.id, request.params.questionId, request.body?.text
+        )
+      })
+    );
     app.post<{ Params: { id: string } }>('/api/workflows/:id/stop', async request => ({
       workflow: await workflows.stop(request.params.id)
     }));
