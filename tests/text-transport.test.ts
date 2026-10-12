@@ -19,6 +19,7 @@ function fakeTelegram() {
     if (method === 'sendMessage' && networkFailure) throw new Error('simulated disconnect after send');
     if (method === 'sendMessage' && refusal) return new Response('denied', { status: 403 });
     const result = method === 'sendMessage' ? { message_id: 711 } :
+      method === 'getMe' ? { id: 987654, is_bot: true } :
       updates.filter((u: any) => u.update_id >= Number(body.offset));
     return new Response(JSON.stringify({ ok: true, result }), { status: 200 });
   }) as typeof fetch;
@@ -70,6 +71,7 @@ test('real-adapter shape, durable outbound, inbound reply and workflow restart w
   assert.equal(await db.textDelivery.count(), 1);
 
   const fake = fakeTelegram();
+  assert.equal(await fake.adapter.health(), true);
   assert.equal(await flushTestTextOutbox(db, fake.adapter, policy), 1);
   assert.equal(await flushTestTextOutbox(db, fake.adapter, policy), 0);
   assert.equal(fake.calls.filter(c => c.method === 'sendMessage').length, 1);
