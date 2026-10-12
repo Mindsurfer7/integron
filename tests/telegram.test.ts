@@ -190,3 +190,65 @@ test('Telegram command authorization, stop, and uncorrelated text are fail-close
     await prisma.telegramPollingCursor.deleteMany({});
   } finally { await prisma.$disconnect(); }
 });
+
+test('owner Telegram commands control durable workflows and never leave external outbox active', {
+  skip: !dbAvailable
+}, async () => {
+  const prisma = new PrismaClient();
+  try {
+    await prisma.$connect();
+    await prisma.workflowRun.deleteMany({});
+    await prisma.demoTask.deleteMany({});
+    const { DurableOrchestrator } = await import('../packages/storage/src/orchestrator.ts');
+    const policy = { enabled: true, allowedChatIds: new Set(['42']) };
+    const jobs = new DurableOrchestrator(prisma, policy);
+    const textRun = await jobs.create('Проверь стоимость и наличие', {
+      transport: 'telegram_test', targetChatId: '42'
+    });
+    await jobs.tick();
+    await jobs.tick();
+    assert.equal((await prisma.textDelivery.findUniqueOrThrow({
+      where: { workflowId: textRun.id }
+    })).state, 'queued');
+    const mock = mockTelegram();
+    const command = async (id: number, text: string, from = 42, chat = 43) => handleOwnerUpdate(prisma, mock.bot, {
+      update_id: id, message: { message_id: id, from: { id: from }, chat: { id: chat }, text }
+    });
+
+    await command(300, '/pause ' + textRun.id, 44);
+    await command(301, '/stop ' + textRun.id, 42, 44);
+    assert.equal((await jobs.get(textRun.id)).state, 'waiting_external');
+
+    await command(302, '/pause ' + textRun.id);
+    assert.equal((await jobs.get(textRun.id)).state, 'paused');
+    await command(303, '/status');
+    assert.ok(mock.sent.some(entry => entry.method === 'sendMessage' &&
+      String(entry.body.text).includes(textRun.id)));
+    await command(304, '/resume ' + textRun.id);
+    assert.equal((await jobs.get(textRun.id)).state, 'waiting_external');
+    await command(305, '/stop ' + textRun.id);
+    assert.equal((await jobs.get(textRun.id)).state, 'cancelled');
+    assert.equal((await prisma.textDelivery.findUniqueOrThrow({
+      where: { workflowId: textRun.id }
+    })).state, 'cancelled');
+    await command(306, '/resume ' + textRun.id);
+    assert.equal((await jobs.get(textRun.id)).state, 'cancelled');
+
+    // A mock workflow and its scripted DemoTask share the UUID: stopping via
+    // the owner bot must cancel both and revoke its pending notification.
+    const mockRun = await jobs.create('Сравни вымышленные предложения');
+    await jobs.tick();
+    await jobs.tick();
+    assert.equal((await jobs.get(mockRun.id)).state, 'waiting_owner');
+    await command(307, '/stop ' + mockRun.id);
+    assert.equal((await jobs.get(mockRun.id)).state, 'cancelled');
+    assert.equal((await new PrismaDemoTaskService(prisma).get(mockRun.id)).state, 'cancelled');
+    assert.equal((await prisma.ownerNotification.findUniqueOrThrow({
+      where: { clarificationId: mockRun.clarificationId }
+    })).state, 'cancelled');
+  } finally {
+    await prisma.workflowRun.deleteMany({});
+    await prisma.demoTask.deleteMany({});
+    await prisma.$disconnect();
+  }
+});

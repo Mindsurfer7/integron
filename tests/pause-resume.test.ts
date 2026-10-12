@@ -57,3 +57,31 @@ test('pause/resume idempotence and terminal guards', {skip:!process.env.DATABASE
  await o.stop(run.id);
  await assert.rejects(()=>o.pause(run.id));
 }));
+
+test('pause uses state-and-step CAS when worker advances during the read', {
+  skip: !process.env.DATABASE_URL
+}, () => fixture(async db => {
+  const jobs = new DurableOrchestrator(db);
+  const run = await jobs.create('Проверить согласованность возобновления');
+  const originalGet = jobs.get.bind(jobs);
+  let injected = false;
+  jobs.get = async (id: string) => {
+    const snapshot = await originalGet(id);
+    if (!injected) {
+      injected = true;
+      // Simulate a worker advancing after the initial read but before the CAS.
+      await db.workflowRun.update({
+        where: { id }, data: { state: 'waiting_external', step: 'await_external' }
+      });
+    }
+    return snapshot;
+  };
+  const paused = await jobs.pause(run.id);
+  assert.equal(paused.state, 'paused');
+  assert.equal(paused.pausedFrom, 'waiting_external');
+  assert.equal(paused.step, 'await_external');
+  const resumed = await jobs.resume(run.id);
+  assert.equal(resumed.state, 'waiting_external');
+  assert.equal(resumed.step, 'await_external');
+  assert.equal((await db.workflowEvent.count({ where: { workflowId: run.id, kind: 'paused' } })), 1);
+}));

@@ -1,12 +1,15 @@
 import type { PrismaClient } from '@prisma/client';
 import { DemoError, type OwnerChoice } from '../../core/src/demo.ts';
 import { PrismaDemoTaskService } from '../../storage/src/prisma.ts';
+import { DurableOrchestrator } from '../../storage/src/orchestrator.ts';
 
 const CHOICES: readonly OwnerChoice[] = ['cheapest', 'fastest', 'defer'];
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const ANSWER = new RegExp('^q:(' + UUID + '):(cheapest|fastest|defer)$');
 const COMMAND = new RegExp('^/answer\\s+(' + UUID + ')\\s+(cheapest|fastest|defer)(?:\\s|$)', 'i');
-const STOP = new RegExp('^/stop\\s+(' + UUID + ')(?:\\s|$)', 'i');
+const STOP = new RegExp('^/stop\\s+(' + UUID + ')\\s*$', 'i');
+const PAUSE = new RegExp('^/pause\\s+(' + UUID + ')\\s*$', 'i');
+const RESUME = new RegExp('^/resume\\s+(' + UUID + ')\\s*$', 'i');
 
 export interface TelegramUpdate {
   update_id: number;
@@ -144,6 +147,7 @@ export async function handleOwnerUpdate(
   prisma: PrismaClient, bot: TelegramBotClient, update: TelegramUpdate
 ): Promise<void> {
   const workflow = new PrismaDemoTaskService(prisma);
+  const orchestrator = new DurableOrchestrator(prisma);
   const callback = update.callback_query;
   if (callback) {
     if (!isOwner(bot, callback.from.id, callback.message?.chat.id)) return;
@@ -166,22 +170,49 @@ export async function handleOwnerUpdate(
   if (!message || !isOwner(bot, message.from?.id, message.chat.id)) return;
   const text = message.text?.trim() ?? '';
   if (/^\/start(?:\s|$)/.test(text) || /^\/help(?:\s|$)/.test(text)) {
-    await bot.sendText('Integron: /status — активные вопросы; /answer <id> cheapest|fastest|defer; /stop <taskId>. Только тестовые задачи.');
+    await bot.sendText('Integron: /status — активные вопросы и поручения; /answer <questionId> cheapest|fastest|defer; /pause <workflowId>; /resume <workflowId>; /stop <taskId|workflowId>. Только тестовые задачи.');
     return;
   }
   if (/^\/status(?:\s|$)/.test(text)) {
     const active = await prisma.ownerClarification.findMany({
       where: { state: 'pending', expiresAt: { gt: new Date() } }, orderBy: { createdAt: 'asc' }, take: 5
     });
-    await bot.sendText(active.length
-      ? 'Ожидают ответа:\n' + active.map(q => q.id + ' (задача ' + q.taskId.slice(0, 8) + ')').join('\n')
-      : 'Нет ожидающих вопросов.');
+    const runs = await prisma.workflowRun.findMany({
+      where: { state: { in: ['queued', 'running', 'waiting_owner', 'waiting_external', 'paused'] } },
+      select: { id: true, state: true, step: true },
+      orderBy: { createdAt: 'desc' }, take: 5
+    });
+    await bot.sendText([
+      active.length ? 'Ожидают ответа:\n' +
+        active.map(q => q.id + ' (задача ' + q.taskId.slice(0, 8) + ')').join('\n')
+        : 'Нет ожидающих вопросов.',
+      runs.length ? 'Активные поручения:\n' +
+        runs.map(r => r.id + ' · ' + r.state + '/' + r.step).join('\n')
+        : 'Нет активных поручений.'
+    ].join('\n\n'));
+    return;
+  }
+  const pause = PAUSE.exec(text);
+  const resume = RESUME.exec(text);
+  if (pause || resume) {
+    try {
+      const id = (pause ?? resume)![1];
+      const run = pause ? await orchestrator.pause(id) : await orchestrator.resume(id);
+      await bot.sendText('Поручение ' + id.slice(0, 8) + ': ' + run.state);
+    } catch (error) {
+      if (!(error instanceof DemoError)) throw error;
+      await bot.sendText('Не удалось изменить поручение: ' + error.code);
+    }
     return;
   }
   const stop = STOP.exec(text);
   if (stop) {
     try {
-      await workflow.stop(stop[1]);
+      const run = await prisma.workflowRun.findUnique({ where: { id: stop[1] }, select: { id: true } });
+      // A workflow's mock task shares its UUID; stopping only the demo task
+      // would leave a workflow or external outbox active.
+      if (run) await orchestrator.stop(stop[1]);
+      else await workflow.stop(stop[1]);
       await bot.sendText('Задача остановлена: ' + stop[1].slice(0, 8));
     } catch (error) {
       if (!(error instanceof DemoError)) throw error;

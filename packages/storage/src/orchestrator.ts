@@ -47,6 +47,21 @@ export class DurableOrchestrator {
       const run = await tx.workflowRun.create({
         data: { id, goal: goal.trim(), clarificationId: randomUUID(), transport, targetChatId }
       });
+      // Persist stable target identity once. Mock organizations are fixtures;
+      // non-mock recipients are only explicitly allowlisted test chats.
+      const targetSpecs = transport === 'mock'
+        ? demoOrganizations.map(org => ({
+            sourceKey: org.id, label: org.name, channel: org.channel,
+            recipientId: null, origin: 'mock_fixture'
+          }))
+        : [{ sourceKey: 'consented-test-recipient', label: 'Разрешённый тестовый собеседник',
+          channel: transport, recipientId: targetChatId, origin: 'explicit_test_allowlist' }];
+      const targetRows = targetSpecs.map(target => ({ ...target, id: randomUUID(), workflowId: id }));
+      await tx.workflowTarget.createMany({ data: targetRows });
+      await tx.workflowConversation.createMany({ data: targetRows.map(target => ({
+        workflowId: id, targetId: target.id, channel: target.channel,
+        state: transport === 'mock' ? 'mock_simulation' : 'planned'
+      })) });
       await tx.workflowEvent.create({ data: { workflowId: id, kind: 'created' } });
       return run;
     });
@@ -70,7 +85,10 @@ export class DurableOrchestrator {
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 100,
       include: { events: { orderBy: { createdAt: 'asc' } },
         delivery: true, messages: { orderBy: { createdAt: 'asc' } },
-        facts: { orderBy: { createdAt: 'asc' } } }
+        facts: { orderBy: { createdAt: 'asc' } },
+        costs: { orderBy: { createdAt: 'asc' } },
+        targets: { orderBy: { createdAt: 'asc' } },
+        conversations: { orderBy: { createdAt: 'asc' } } }
     });
   }
 
@@ -79,7 +97,10 @@ export class DurableOrchestrator {
     const run = await this.db.workflowRun.findUnique({
       where: { id }, include: { events: { orderBy: { createdAt: 'asc' } },
         delivery: true, messages: { orderBy: { createdAt: 'asc' } },
-        facts: { orderBy: { createdAt: 'asc' } } }
+        facts: { orderBy: { createdAt: 'asc' } },
+        costs: { orderBy: { createdAt: 'asc' } },
+        targets: { orderBy: { createdAt: 'asc' } },
+        conversations: { orderBy: { createdAt: 'asc' } } }
     });
     if (!run) throw new DemoError(404, 'WORKFLOW_NOT_FOUND', 'Поручение не найдено');
     return run;
@@ -110,9 +131,15 @@ export class DurableOrchestrator {
         where: { id, state: { in: [...ACTIVE, 'paused'] } },
         data: { state, pausedFrom: null, step: 'done', leaseToken: null, leasedUntil: null, finishedAt: new Date() }
       });
-      if (changed.count) await tx.workflowEvent.create({
-        data: { workflowId: id, kind: completed ? 'completed' : 'stopped' }
-      });
+      if (changed.count) {
+        await tx.workflowConversation.updateMany({
+          where: { workflowId: id, state: { not: 'mock_simulation' } },
+          data: { state: completed ? 'completed' : 'cancelled' }
+        });
+        await tx.workflowEvent.create({
+          data: { workflowId: id, kind: completed ? 'completed' : 'stopped' }
+        });
+      }
     });
     await this.db.textDelivery.updateMany({
       where: { workflowId: id, state: 'queued' }, data: { state: 'cancelled' }
@@ -130,18 +157,31 @@ export class DurableOrchestrator {
 
   /** Pause is a durable state, not a held lease. No new step can be claimed. */
   async pause(id: string) {
-    const run = await this.get(id);
-    if (run.state === 'paused') return run;
-    if (TERMINAL.includes(run.state)) throw new DemoError(409, 'WORKFLOW_FINISHED', 'Поручение уже завершено');
-    await this.db.$transaction(async tx => {
-      const changed = await tx.workflowRun.updateMany({
-        where: { id, state: { in: ACTIVE } },
-        data: { state: 'paused', pausedFrom: run.state,
-          leaseToken: null, leasedUntil: null }
+    // Compare the exact state read with the state being paused. Without CAS a
+    // worker may advance running -> waiting_external between get() and update(),
+    // leaving pausedFrom=running with step=await_external. Resume would then
+    // permanently strand the workflow in the wrong state.
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const run = await this.get(id);
+      if (run.state === 'paused') return run;
+      if (TERMINAL.includes(run.state)) {
+        throw new DemoError(409, 'WORKFLOW_FINISHED', 'Поручение уже завершено');
+      }
+      const changed = await this.db.$transaction(async tx => {
+        const result = await tx.workflowRun.updateMany({
+          where: { id, state: run.state, step: run.step,
+            leaseToken: run.leaseToken, pausedFrom: null },
+          data: { state: 'paused', pausedFrom: run.state,
+            leaseToken: null, leasedUntil: null }
+        });
+        if (result.count) await tx.workflowEvent.create({
+          data: { workflowId: id, kind: 'paused' }
+        });
+        return result.count;
       });
-      if (changed.count) await tx.workflowEvent.create({data:{workflowId:id,kind:'paused'}});
-    });
-    return this.get(id);
+      if (changed) return this.get(id);
+    }
+    throw new DemoError(409, 'CONCURRENT_UPDATE', 'Поручение изменилось. Повторите паузу.');
   }
 
   /** Restore the previous waiting/running state without replaying the outbox. */
@@ -250,6 +290,10 @@ export class DurableOrchestrator {
             availableAt: new Date(Date.now() + POLL_MS), leaseToken: null, leasedUntil: null }
         });
         if (!updated.count) return;
+        await tx.workflowConversation.updateMany({
+          where: { workflowId: id, state: 'planned' },
+          data: { state: 'waiting_external' }
+        });
         await tx.textDelivery.create({
           data: { workflowId: id, chatId,
             channel: run.transport === 'telegram_test' ? 'telegram_bot_test' : run.transport,
@@ -292,6 +336,10 @@ export class DurableOrchestrator {
             failures: 0, lastError: null, leaseToken: null, leasedUntil: null }
         });
         if (!changed.count) return;
+        await tx.workflowConversation.updateMany({
+          where: { workflowId: id, state: { not: 'mock_simulation' } },
+          data: { state: 'completed' }
+        });
         if (quotes.length) {
           await tx.workflowFact.createMany({
             data: quotes.map(q => ({ workflowId: id, messageId: received.id,
@@ -347,7 +395,15 @@ export class DurableOrchestrator {
           leasedUntil: { gt: new Date() } },
         data: { ...data, failures: 0, lastError: null, leaseToken: null, leasedUntil: null }
       });
-      if (changed.count) await tx.workflowEvent.create({ data: { workflowId: id, kind } });
+      if (changed.count) {
+        if (['send_unknown_review_required', 'send_rejected', 'external_reply_timeout'].includes(kind)) {
+          await tx.workflowConversation.updateMany({
+            where: { workflowId: id, state: 'waiting_external' },
+            data: { state: 'failed' }
+          });
+        }
+        await tx.workflowEvent.create({ data: { workflowId: id, kind } });
+      }
       return changed.count === 1;
     });
   }

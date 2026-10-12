@@ -186,3 +186,23 @@ No personal account E2E, macOS ARM native library load, or WhatsApp messages are
 - [ ] Production capability intentionally unavailable; no bulk/cold outreach or voice.
 
 See [P2-3-WHATSAPP-SPIKE.md](P2-3-WHATSAPP-SPIKE.md).
+
+## P1 core reliability & accounting (2026-10-13)
+
+See [P1-CORE-HARDENING.md](P1-CORE-HARDENING.md). This is a completed
+**increment**, **not complete P1 acceptance**.
+
+- [x] Verified owner Telegram `/pause`, `/resume`, `/stop` on durable
+  workflows, including cancellation of their associated mock tasks/outbox.
+- [x] Pause state-and-step compare-and-set prevents stale-state resume.
+- [x] Multiple source-linked conflicting quotes persisted without false
+  verification. UI and audit distinguish conflicting claims.
+- [x] Normalized `WorkflowTarget` and `WorkflowConversation` entities for
+  mock fixtures and one opt-in test recipient, with persisted lifecycle.
+- [x] Idempotent, transactional per-workflow cost-accounting ledger and
+  local-dashboard summary (default $5.00 ceiling).
+- [x] Offline/PostgreSQL regression tests for the above.
+- [ ] Live provider metering, preflight cost reservations, cross-workflow/day
+  cap and actual budget enforcement before external paid action.
+- [ ] P1 complete: generalized free-text approvals, normalized
+  contacts/identities/call entities, public API auth, real E2E.
