@@ -38,8 +38,8 @@ process.once('SIGTERM', () => { void shutdown().then(() => process.exit(0)); });
 process.once('SIGINT', () => { void shutdown().then(() => process.exit(0)); });
 
 try {
-  await app.listen({ host: '127.0.0.1', port });
-  console.log('Integron ' + profile.toUpperCase() + ' Fastify API running at http://127.0.0.1:' + app.server.address()?.toString().replace(/^.*?:/, '') + ' (no outbound)');
+  const url = await app.listen({ host: '127.0.0.1', port });
+  console.log('Integron ' + profile.toUpperCase() + ' Fastify API running at ' + url + ' (no outbound)');
 } catch (error) {
   await shutdown();
   throw error;
