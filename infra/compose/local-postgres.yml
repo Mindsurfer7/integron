@@ -1,0 +1,21 @@
+# Local development only: database port is bound to loopback.
+# Change credentials before any non-local deployment.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: integron
+      POSTGRES_PASSWORD: integron_dev_only
+      POSTGRES_DB: integron
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - integron-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U integron -d integron"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+volumes:
+  integron-pgdata:
