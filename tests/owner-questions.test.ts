@@ -215,6 +215,9 @@ test('loopback web inbox enforces parent workflow ID and browser origin, no extr
       headers: { host }, payload: { text: 'Уточни вручную' }
     });
     assert.equal(wrongWorkflow.statusCode, 404);
+    // The unrelated queued task must not take precedence over the resumed
+    // review when we explicitly tick one step in this test.
+    await jobs.stop(wrong.id);
     const invalid = await app.inject({
       method: 'POST', url: path, headers: { host }, payload: { text: 'x' }
     });
