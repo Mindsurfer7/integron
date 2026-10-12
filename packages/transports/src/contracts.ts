@@ -35,10 +35,11 @@ export interface IncomingText {
   body: string;
   replyToProviderId?: string;
 }
+export interface TransportUpdate { updateId: number; incoming?: IncomingText }
 export interface TextTransportAdapter {
   readonly capabilities: TransportCapabilities;
   send(intent: TextSendIntent): Promise<TextSendReceipt>;
-  receive(afterUpdateId: number): Promise<IncomingText[]>;
+  receive(afterUpdateId: number): Promise<TransportUpdate[]>;
 }
 export interface TestTextPolicy {
   enabled: boolean;
