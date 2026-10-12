@@ -80,8 +80,8 @@ export class TelegramBotClient {
     const result = await this.call<{ message_id: number }>('sendMessage', {
       chat_id: this.ownerChatId,
       text: '🤖 Integron · уточнение по поручению #' + workflowId.slice(0, 8) +
-        '\\n\\n' + prompt + '\\n\\nВопрос: ' + questionId +
-        '\\nОтветь reply на это сообщение или /reply ' + questionId + ' <текст>.'
+        '\n\n' + prompt + '\n\nВопрос: ' + questionId +
+        '\nОтветь reply на это сообщение или /reply ' + questionId + ' <текст>.'
     });
     return String(result.message_id);
   }
@@ -279,8 +279,8 @@ export async function handleOwnerUpdate(
       orderBy: { createdAt: 'asc' }, take: 5
     });
     await bot.sendText([
-      ownerQuestions.length ? 'Свободные вопросы:\\n' +
-        ownerQuestions.map(q => q.id + ' (поручение ' + q.workflowId.slice(0, 8) + ')').join('\\n')
+      ownerQuestions.length ? 'Свободные вопросы:\n' +
+        ownerQuestions.map(q => q.id + ' (поручение ' + q.workflowId.slice(0, 8) + ')').join('\n')
         : 'Нет новых свободных вопросов.',
       active.length ? 'Ожидают ответа:\n' +
         active.map(q => q.id + ' (задача ' + q.taskId.slice(0, 8) + ')').join('\n')
