@@ -19,10 +19,11 @@ class FakeSocket {
   };
   emit(kind: string, event: any) { for (const fn of this.handlers.get(kind) ?? []) fn(event); }
   sends = 0;
+  sendAck = true;
   async sendMessage(chat: string, _content: { text: string }) {
     this.sends++;
     const key = { remoteJid: chat, id: 'OUTBOUND12345', fromMe: true };
-    setImmediate(() => this.emit('messages.update', [{ key, update: { status: 2 } }]));
+    if (this.sendAck) setImmediate(() => this.emit('messages.update', [{ key, update: { status: 2 } }]));
     return { key };
   }
 }
@@ -86,5 +87,28 @@ test('Postgres stopped WhatsApp workflow never dispatches queued text', {
     assert.equal(await flushTestTextOutbox(db, adapter, policy, 1, WHATSAPP_ROUTE), 0);
     assert.equal(client.sends, 0);
     assert.equal((await db.textDelivery.findUniqueOrThrow({ where:{workflowId:run.id} })).state, 'cancelled');
+  } finally { await adapter.close(); }
+}));
+
+test('Postgres WhatsApp delivery with unknown server ACK is never automatically resent', {
+  skip: !process.env.DATABASE_URL
+}, () => fixture(async (db, jobs) => {
+  const run = await jobs.create('Проверь неопределённую доставку',
+    { transport: 'whatsapp_user_test', targetChatId: JID });
+  await jobs.tick(); await jobs.tick();
+  const fake = new FakeSocket(); fake.sendAck = false;
+  const adapter = new WhatsAppUserTestAdapter(fake, AGENT, policy, 15);
+  try {
+    assert.equal(await flushTestTextOutbox(db, adapter, policy, 1, WHATSAPP_ROUTE), 0);
+    assert.equal((await db.textDelivery.findUniqueOrThrow({
+      where: { workflowId: run.id }
+    })).state, 'unknown');
+    assert.equal(await flushTestTextOutbox(db, adapter, policy, 1, WHATSAPP_ROUTE), 0);
+    assert.equal(fake.sends, 1);
+    await db.workflowRun.update({ where: { id: run.id },
+      data: { availableAt: new Date(0) } });
+    await jobs.tick();
+    assert.equal((await jobs.get(run.id)).state, 'failed');
+    assert.equal((await jobs.get(run.id)).events.at(-1)?.kind, 'send_unknown_review_required');
   } finally { await adapter.close(); }
 }));
