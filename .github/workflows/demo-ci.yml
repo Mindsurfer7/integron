@@ -1,4 +1,4 @@
-name: P0 demo smoke tests
+name: Integron P0 checks
 on:
   push:
   pull_request:
@@ -9,6 +9,38 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
-      - name: Verify mock domain tests (no secrets or API keys)
-        run: node --experimental-strip-types --experimental-sqlite --test tests/*.test.ts
+          node-version: '22.16.0'
+      - name: Set up pnpm
+        run: corepack enable
+      - name: Install packages
+        run: pnpm install --no-frozen-lockfile
+      - name: Generate Prisma Client
+        run: pnpm db:generate
+      - name: API + domain + SQLite tests
+        run: pnpm test
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: integron
+          POSTGRES_PASSWORD: ci_only
+          POSTGRES_DB: integron_ci
+        options: >-
+          --health-cmd "pg_isready -U integron -d integron_ci"
+          --health-interval 5s --health-timeout 3s --health-retries 15
+    env:
+      DATABASE_URL: postgresql://integron:ci_only@127.0.0.1:5432/integron_ci?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - run: corepack enable
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm db:generate
+      - run: pnpm db:deploy
+      - run: pnpm test:postgres
