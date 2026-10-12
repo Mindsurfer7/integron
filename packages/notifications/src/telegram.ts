@@ -1,12 +1,15 @@
 import type { PrismaClient } from '@prisma/client';
 import { DemoError, type OwnerChoice } from '../../core/src/demo.ts';
 import { PrismaDemoTaskService } from '../../storage/src/prisma.ts';
+import { DurableOrchestrator } from '../../storage/src/orchestrator.ts';
+import { readTestTextPolicy, readTdlibUserPolicy } from '../../transports/src/contracts.ts';
 
 const CHOICES: readonly OwnerChoice[] = ['cheapest', 'fastest', 'defer'];
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const ANSWER = new RegExp('^q:(' + UUID + '):(cheapest|fastest|defer)$');
 const COMMAND = new RegExp('^/answer\\s+(' + UUID + ')\\s+(cheapest|fastest|defer)(?:\\s|$)', 'i');
 const STOP = new RegExp('^/stop\\s+(' + UUID + ')(?:\\s|$)', 'i');
+const WORKFLOW_COMMAND = new RegExp('^/w(pause|resume|stop)\\s+(' + UUID + ')(?:\\s|$)', 'i');
 
 export interface TelegramUpdate {
   update_id: number;
@@ -166,7 +169,7 @@ export async function handleOwnerUpdate(
   if (!message || !isOwner(bot, message.from?.id, message.chat.id)) return;
   const text = message.text?.trim() ?? '';
   if (/^\/start(?:\s|$)/.test(text) || /^\/help(?:\s|$)/.test(text)) {
-    await bot.sendText('Integron: /status — активные вопросы; /answer <id> cheapest|fastest|defer; /stop <taskId>. Только тестовые задачи.');
+    await bot.sendText('Integron: /status; /answer <questionId> cheapest|fastest|defer; /stop <mockTaskId>; /wpause <workflowId>; /wresume <workflowId>; /wstop <workflowId>.');
     return;
   }
   if (/^\/status(?:\s|$)/.test(text)) {
@@ -176,6 +179,21 @@ export async function handleOwnerUpdate(
     await bot.sendText(active.length
       ? 'Ожидают ответа:\n' + active.map(q => q.id + ' (задача ' + q.taskId.slice(0, 8) + ')').join('\n')
       : 'Нет ожидающих вопросов.');
+    return;
+  }
+  const workflowCommand = WORKFLOW_COMMAND.exec(text);
+  if (workflowCommand) {
+    // The authenticated owner channel is separate from agent-outbound identities.
+    const runs = new DurableOrchestrator(
+      prisma, readTestTextPolicy(process.env), readTdlibUserPolicy(process.env));
+    const action = workflowCommand[1].toLowerCase() as 'pause' | 'resume' | 'stop';
+    try {
+      const run = await runs[action](workflowCommand[2]);
+      await bot.sendText('Поручение #' + run.id.slice(0, 8) + ': ' + run.state);
+    } catch (error) {
+      if (!(error instanceof DemoError)) throw error;
+      await bot.sendText('Не удалось изменить поручение: ' + error.code);
+    }
     return;
   }
   const stop = STOP.exec(text);
