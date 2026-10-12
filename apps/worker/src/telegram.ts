@@ -1,8 +1,10 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaDemoTaskService } from '../../../packages/storage/src/prisma.ts';
-import { TelegramBotClient, flushOwnerOutbox, pollOwnerUpdates } from '../../../packages/notifications/src/telegram.ts';
+import { TelegramBotClient, flushOwnerOutbox, flushWorkflowOwnerOutbox, pollOwnerUpdates } from '../../../packages/notifications/src/telegram.ts';
 
-// Telegram bot communicates ONLY with the verified owner. Mock tasks only.
+import { expireWorkflowOwnerQuestions } from '../../../packages/storage/src/owner-questions.ts';
+
+// Telegram bot communicates ONLY with the verified owner. Mock and opt-in test workflows.
 // Single poller per database. Persistent cursor protects against duplicate callbacks.
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
 if (process.env.OUTBOUND_ENABLED !== undefined && process.env.OUTBOUND_ENABLED !== 'false') {
@@ -25,10 +27,12 @@ try {
   while (!stopping) {
     try {
       await tasks.expirePending();
+      await expireWorkflowOwnerQuestions(prisma);
       // Inbound first: pressing a button while queued cancels the notification.
       await pollOwnerUpdates(prisma, bot);
       if (stopping) break;
       await flushOwnerOutbox(prisma, bot);
+      await flushWorkflowOwnerOutbox(prisma, bot);
     } catch (error) {
       // Never log Telegram URL/token, request body or personal data.
       console.error('Telegram worker cycle failed:', error instanceof Error ? error.name : 'Unknown error');
