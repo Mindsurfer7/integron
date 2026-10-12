@@ -48,7 +48,7 @@ if (mode === 'tdlib') {
 } else if (mode === 'whatsapp') {
   const env = process.env;
   const isPrivate = value => typeof value === 'string' &&
-    /^[1-9][0-9]{6,14}@s\\.whatsapp\\.net$/.test(value);
+    /^[1-9][0-9]{6,14}@s\.whatsapp\.net$/.test(value);
   const ids = (env.WHATSAPP_ALLOWED_JIDS || '').split(',').map(x => x.trim()).filter(Boolean);
   check(env.OUTBOUND_ENABLED === undefined || env.OUTBOUND_ENABLED === 'false',
     'global outbound remains disabled');
