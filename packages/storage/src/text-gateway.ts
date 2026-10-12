@@ -1,8 +1,9 @@
 import type { PrismaClient } from '@prisma/client';
-import { authorizeTestText, type TestTextPolicy, type TextTransportAdapter, type IncomingText } from '../../transports/src/contracts.ts';
+import { authorizeTestText, authorizeWhatsAppTestText, type TestTextPolicy, type TextTransportAdapter, type IncomingText } from '../../transports/src/contracts.ts';
 import { TelegramTestRejected } from '../../transports/src/telegram-test.ts';
 
 const CHANNEL = 'telegram_bot_test';
+export const WHATSAPP_ROUTE = { channel: 'whatsapp_user_test', transport: 'whatsapp_user_test' } as const;
 export const TDLIB_ROUTE = { channel: 'telegram_user_test', transport: 'telegram_user_test' } as const;
 const BOT_ROUTE = { channel: CHANNEL, transport: 'telegram_test' } as const;
 type Route = { channel: string; transport: string };
@@ -23,6 +24,8 @@ export async function flushTestTextOutbox(
   });
   let sent = 0;
   for (const row of queued) {
+    // Pause must preserve a queued delivery, never discard it as unauthorised.
+    if (row.workflow.state === 'paused') continue;
     const valid = policy.allowedChatIds.has(row.chatId) &&
       row.channel === route.channel && row.workflow.transport === route.transport &&
       row.workflow.targetChatId === row.chatId &&
@@ -51,8 +54,17 @@ export async function flushTestTextOutbox(
     try {
       // Re-check stop and allowlist after claim; stop racing actual network I/O
       // cannot revoke an already-dispatched Telegram request.
-      authorizeTestText(policy, row.chatId);
+      if (route.channel === WHATSAPP_ROUTE.channel) authorizeWhatsAppTestText(policy, row.chatId);
+      else authorizeTestText(policy, row.chatId);
       const state = await db.workflowRun.findUnique({ where: { id: row.workflowId } });
+      if (state?.state === 'paused') {
+        // We have not called the provider yet: release the claim for resume.
+        await db.textDelivery.updateMany({
+          where: { id: row.id, state: 'sending' },
+          data: { state: 'queued', leasedUntil: null, attempts: { decrement: 1 } }
+        });
+        continue;
+      }
       if (state?.state !== 'waiting_external' || state?.step !== 'await_external') {
         await db.textDelivery.updateMany({
           where: { id: row.id, state: 'sending' }, data: { state: 'cancelled', leasedUntil: null }

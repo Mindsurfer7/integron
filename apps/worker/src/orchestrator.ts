@@ -2,7 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaDemoTaskService } from '../../../packages/storage/src/prisma.ts';
 import { DurableOrchestrator } from '../../../packages/storage/src/orchestrator.ts';
 import { plannerFromEnvironment } from '../../../packages/llm/src/planner.ts';
-import { readTestTextPolicy, readTdlibUserPolicy } from '../../../packages/transports/src/contracts.ts';
+import { readTestTextPolicy, readTdlibUserPolicy, readWhatsAppUserPolicy } from '../../../packages/transports/src/contracts.ts';
 
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
 if (process.env.OUTBOUND_ENABLED !== undefined && process.env.OUTBOUND_ENABLED !== 'false') {
@@ -10,7 +10,8 @@ if (process.env.OUTBOUND_ENABLED !== undefined && process.env.OUTBOUND_ENABLED !
 }
 const db = new PrismaClient();
 const orchestrator = new DurableOrchestrator(db, readTestTextPolicy(process.env),
-  readTdlibUserPolicy(process.env), plannerFromEnvironment(process.env));
+  readTdlibUserPolicy(process.env), plannerFromEnvironment(process.env),
+  readWhatsAppUserPolicy(process.env));
 const tasks = new PrismaDemoTaskService(db);
 let stopping = false;
 process.on('SIGINT', () => { stopping = true; });

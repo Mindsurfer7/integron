@@ -14,7 +14,7 @@ button.primary{background:#168361;border-color:#168361}.badge{background:#163c33
 .tile strong{display:block;margin-bottom:7px}.tile small{color:#9bacbe}ul{padding-left:20px}li{margin:8px 0}code{color:#a3cdf5;word-break:break-word}
 #error{color:#ff9090;min-height:1.3em}
 </style></head><body><main>
-<div><span class="badge">DEMO по умолчанию · тестовый Telegram опционально</span><h1>Integron</h1><p class="muted">Локальный прототип: три вымышленные организации, симулированные сообщения и вопрос владельцу. AI-планировщик опционален и выключен по умолчанию; нет автоматического поиска компаний, WhatsApp, LINE или телефонии. Настоящие тестовые Telegram-сообщения возможны только после явного включения и allowlist.</p></div>
+<div><span class="badge">DEMO по умолчанию · тестовый Telegram опционально</span><h1>Integron</h1><p class="muted">Локальный прототип: три вымышленные организации, симулированные сообщения и вопрос владельцу. AI-планировщик опционален и выключен по умолчанию; автоматического поиска компаний и телефонии нет. WhatsApp USER возможен лишь как отдельно включаемый тестовый канал; LINE недоступен. Настоящие тестовые Telegram-сообщения возможны только после явного включения и allowlist.</p></div>
 <section class="panel"><h2>Новое поручение</h2><form id="task-form"><label for="goal">Что нужно узнать?</label><textarea id="goal" maxlength="500" required>Узнай стоимость и сроки услуги в трёх клиниках</textarea><button class="primary" type="submit">Запустить симуляцию</button></form><p id="error" role="alert"></p></section>
 <section class="panel"><h2>Задачи</h2><div id="tasks" class="muted">Пока нет задач.</div></section>
 <section class="panel" id="detail" hidden><h2>Ход выполнения</h2><p id="task-status"></p><div id="results" class="grid"></div><div id="question"></div><h3>Журнал событий</h3><ul id="events"></ul><button id="stop" type="button">Остановить задачу</button></section>
@@ -24,8 +24,8 @@ button.primary{background:#168361;border-color:#168361}.badge{background:#163c33
 <form id="workflow-form"><label for="workflow-goal">Что поручить?</label>
 <textarea id="workflow-goal" maxlength="500" required>Сравни сроки и стоимость у трёх компаний</textarea>
 <label for="workflow-transport">Канал</label>
-<select id="workflow-transport"><option value="mock">Симуляция</option><option value="telegram_test">Telegram Bot — тестовый чат</option><option value="telegram_user_test">Telegram USER (TDLib) — разрешённый тестовый контакт</option></select>
-<div id="workflow-target" hidden><label for="workflow-chat">Telegram Chat ID тестового собеседника</label>
+<select id="workflow-transport"><option value="mock">Симуляция</option><option value="telegram_test">Telegram Bot — тестовый чат</option><option value="telegram_user_test">Telegram USER (TDLib) — разрешённый тестовый контакт</option><option value="whatsapp_user_test">WhatsApp USER — экспериментальный тест</option></select>
+<div id="workflow-target" hidden><label id="workflow-chat-label" for="workflow-chat">Telegram Chat ID тестового собеседника</label>
 <input id="workflow-chat" type="text" inputmode="numeric" placeholder="Числовой chat ID из allowlist"></div>
 <button class="primary" type="submit">Поставить в очередь</button></form>
 <div id="workflow-list"></div>

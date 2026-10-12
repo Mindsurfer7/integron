@@ -5,8 +5,8 @@ import { arch, platform } from 'node:os';
 import { execFileSync } from 'node:child_process';
 
 const mode = process.argv[2] || 'local';
-if (!['local', 'tdlib'].includes(mode)) {
-  console.error('Usage: node scripts/local-preflight.mjs [local|tdlib]');
+if (!['local', 'tdlib', 'whatsapp'].includes(mode)) {
+  console.error('Usage: node scripts/local-preflight.mjs [local|tdlib|whatsapp]');
   process.exit(2);
 }
 let errors = 0;
@@ -45,10 +45,28 @@ if (mode === 'tdlib') {
   check(!env.TDJSON_PATH || env.TDJSON_PATH.startsWith('/') && existsSync(env.TDJSON_PATH),
     'optional TDJSON_PATH points to existing absolute library');
   warn('No native login, DB connection, TDLib load, contact consent or send verified');
+} else if (mode === 'whatsapp') {
+  const env = process.env;
+  const isPrivate = value => typeof value === 'string' &&
+    /^[1-9][0-9]{6,14}@s\.whatsapp\.net$/.test(value);
+  const ids = (env.WHATSAPP_ALLOWED_JIDS || '').split(',').map(x => x.trim()).filter(Boolean);
+  check(env.OUTBOUND_ENABLED === undefined || env.OUTBOUND_ENABLED === 'false',
+    'global outbound remains disabled');
+  check(env.TEST_WHATSAPP_USER_ENABLED === 'true', 'WhatsApp test explicitly enabled');
+  check(env.WHATSAPP_LIVE_CONNECT_ENABLED === 'true', 'extra manual live worker opt-in set');
+  check(ids.length >= 1 && ids.length <= 2 &&
+    ids.every(isPrivate) && new Set(ids).size === ids.length,
+    '1–2 unique private allowlisted test JIDs');
+  check(isPrivate(env.WHATSAPP_AGENT_JID) && !ids.includes(env.WHATSAPP_AGENT_JID) &&
+    env.WHATSAPP_AGENT_JID !== env.OWNER_WHATSAPP_JID, 'separate dedicated agent identity');
+  check(Boolean(env.DATABASE_URL?.startsWith('postgresql://') ||
+    env.DATABASE_URL?.startsWith('postgres://')), 'PostgreSQL database configured');
+  warn('No Baileys import, QR login, network, recipient consent or real send verified');
 } else {
   warn('Offline demo command: pnpm dev:demo');
   warn('Local PostgreSQL: docker compose -f infra/compose/local-postgres.yml up -d');
   warn('TDLib opt-in preflight: pnpm preflight:tdlib (with local secrets set)');
+  warn('WhatsApp opt-in preflight: pnpm preflight:whatsapp (with local test identities)');
 }
 if (errors) {
   console.error(`${errors} preflight check(s) failed. No outbound actions attempted.`);

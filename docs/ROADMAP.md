@@ -174,3 +174,15 @@ No personal account E2E, macOS ARM native library load, or WhatsApp messages are
 - [x] Worker cannot claim paused workflow; lease invalidated on pause.
 - [x] UI pause/resume and stop from pause; resume does not create a second outbox.
 - [ ] Real-account E2E; in-flight send cannot be revoked after transport dispatch.
+
+
+## P2.3 WhatsApp USER code slice — conflict-resolution update (2026-10-13)
+
+- [x] `whatsapp_user_test` opt-in Baileys transport added without changing the P1 structured planner, fact/evidence extraction, or pause/resume state machine.
+- [x] Separate private-chat allowlist, independent agent identity, explicit live-connect and test flags OFF by default.
+- [x] Outbox routed by channel and provider-ack UNKNOWN semantics; exact quoted reply; PostgreSQL and offline tests. Paused workflows preserve queued messages until resumed (no implicit sending).
+- [x] UI allows specifying experimental WhatsApp recipient without removing Telegram USER, source evidence, or pause/resume buttons.
+- [ ] Live two-account QR/send/reply, reconnect/history recovery, session-at-rest encryption and native Mac/Linux acceptance.
+- [ ] Production capability intentionally unavailable; no bulk/cold outreach or voice.
+
+See [P2-3-WHATSAPP-SPIKE.md](P2-3-WHATSAPP-SPIKE.md).

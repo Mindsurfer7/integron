@@ -115,7 +115,7 @@ async function refreshWorkflows() {
   if (!active) return;
   workflowDetail.append(element('h3', 'Поручение #' + active.id.slice(0, 8)));
   workflowDetail.append(element('p', 'Состояние: ' + active.state + ', шаг: ' + active.step));
-  if (active.plan) workflowDetail.append(element('p', 'Канал: ' + (active.transport === 'mock' ? 'mock' : active.transport === 'telegram_test' ? 'Telegram Bot test' : 'Telegram USER TDLib test') + ' · внешняя отправка: ' + (active.transport === 'mock' ? 'нет' : 'только allowlist')));
+  if (active.plan) workflowDetail.append(element('p', 'Канал: ' + (active.transport === 'mock' ? 'mock' : active.transport === 'telegram_test' ? 'Telegram Bot test' : active.transport === 'telegram_user_test' ? 'Telegram USER TDLib test' : 'WhatsApp USER experimental test') + ' · внешняя отправка: ' + (active.transport === 'mock' ? 'нет' : 'только allowlist')));
   if (active.plan?.research?.fields) {
     workflowDetail.append(element('p', 'План исследования: ' + active.plan.research.fields.join(', ')));
   }
@@ -125,7 +125,7 @@ async function refreshWorkflows() {
   }
   if (active.messages?.length) {
     const transcript = element('div');
-    transcript.append(element('h3', 'Переписка (реальные Telegram-сообщения)'));
+    transcript.append(element('h3', 'Переписка (тестовые сообщения; канал указан выше)'));
     for (const m of active.messages) {
       transcript.append(element('p', (m.direction === 'in' ? 'Получено: ' : 'Отправлено: ') + m.body));
     }
@@ -192,4 +192,8 @@ refreshWorkflows().then(() => {
 const workflowTransport = document.querySelector('#workflow-transport');
 workflowTransport.addEventListener('change', () => {
   document.querySelector('#workflow-target').hidden = workflowTransport.value === 'mock';
+  document.querySelector('#workflow-chat-label').textContent =
+    workflowTransport.value === 'whatsapp_user_test'
+      ? 'WhatsApp JID (разрешённый тестовый контакт)'
+      : 'Telegram Chat ID тестового собеседника';
 });

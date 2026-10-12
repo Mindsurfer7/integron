@@ -114,4 +114,20 @@ pnpm test
 pnpm dev:demo
 ```
 
-No Telegram/WhatsApp account, API key, real outreach or VPS is required. `pnpm preflight:tdlib` verifies supplied local variables and native library path **without performing TDLib login**, so run it only after exporting the private variables locally. Real TDLib account tests still require interactive login; WhatsApp stays a research-only candidate. See [P2-TDLIB-USER.md](P2-TDLIB-USER.md) and [P2-3-WHATSAPP-SPIKE.md](P2-3-WHATSAPP-SPIKE.md).
+No Telegram/WhatsApp account, API key, real outreach or VPS is required. `pnpm preflight:tdlib` verifies supplied local variables and native library path **without performing TDLib login**, so run it only after exporting the private variables locally. Real TDLib account tests still require interactive login; WhatsApp remains experimental, test-only, and disabled by default. See [P2-TDLIB-USER.md](P2-TDLIB-USER.md) and [P2-3-WHATSAPP-SPIKE.md](P2-3-WHATSAPP-SPIKE.md).
+
+
+## P2.3: WhatsApp USER local experiment
+
+The new transport `whatsapp_user_test` is not active in demo or normal startup.
+Use `pnpm test:whatsapp:unit` or `pnpm preflight:whatsapp` for local validation.
+To connect a separate **consenting test identity** you must explicitly configure
+`TEST_WHATSAPP_USER_ENABLED=true`, `WHATSAPP_LIVE_CONNECT_ENABLED=true`,
+`WHATSAPP_AGENT_JID` and 1–2 private `WHATSAPP_ALLOWED_JIDS`. Then run
+`pnpm dev:agent-whatsapp` on your own Mac. Local QR and persistent session files
+must remain outside GitHub and chats. Tests use fake adapters; no live WhatsApp
+authorization or E2E is confirmed. `OUTBOUND_ENABLED=false` stays globally set.
+
+When a workflow is paused, its queued WhatsApp message is kept intact and cannot
+be sent by the worker until resume. An already-dispatched network request cannot
+be revoked by pause. See [P2.3 experiment](P2-3-WHATSAPP-SPIKE.md).
