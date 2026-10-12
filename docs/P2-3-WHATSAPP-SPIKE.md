@@ -79,6 +79,7 @@ export OUTBOUND_ENABLED=false
 pnpm db:generate && pnpm db:deploy
 pnpm dev:postgres       # terminal 1
 pnpm dev:orchestrator   # terminal 2
+pnpm preflight:whatsapp # no network, account, or QR; validates opt-in config
 pnpm dev:agent-whatsapp # terminal 3, QR only here
 ```
 
