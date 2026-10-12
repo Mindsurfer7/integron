@@ -6,7 +6,7 @@ import { PrismaDemoTaskService } from './prisma.ts';
 import { MockResearchPlanner, questionsFromFields, validateProposal,
   type ResearchPlanner } from '../../llm/src/planner.ts';
 import { extractQuotedFacts } from '../../core/src/evidence.ts';
-import { expireWorkflowOwnerQuestions, type OwnerIdentity } from './owner-questions.ts';
+import { answerWorkflowOwnerQuestion, expireWorkflowOwnerQuestions, type OwnerIdentity } from './owner-questions.ts';
 import { authorizeTestText, authorizeWhatsAppTestText, type TestTextPolicy } from '../../transports/src/contracts.ts';
 
 /**
