@@ -29,6 +29,8 @@
 - **P1 (частично):** PostgreSQL теперь транзакционно хранит mock-вопросы и notification outbox. Отдельный Telegram-worker отправляет их проверенному владельцу, принимает ответы по UUID, сохраняет polling offset и не повторяет неоднозначную отправку автоматически. См. [P1-TELEGRAM-HITL.md](P1-TELEGRAM-HITL.md).
 - **P1 (добавлен slice 2):** самостоятельная PostgreSQL-очередь WorkflowRun с жизненным циклом plan → collect(mock) → wait owner → resume, lease и retries, аудит WorkflowEvent, UI/API. См. [P1-ORCHESTRATOR.md](P1-ORCHESTRATOR.md). Реальный планировщик LLM, нормализованные сообщения/факты, reconcile внешних side effects, пауза/возобновление и production-security остаются впереди. Telegram и оркестратор пока работают **только на симуляции**, реальные звонки и outreach выключены.
 
+- **P2 (первый узкий slice):** контракты `TextTransportAdapter`, детерминированный allowlist и Telegram **Bot API test** (только начавшие /start приватные test-чаты): отправка, нормализованные доказательства ответов, resume workflow и no-retry unknown. CI использует fake fetch; реальный E2E ещё не проверен. Это **не** Telegram USER (TDLib) и не реальная рассылка организациям. См. [P2-TELEGRAM-TEST.md](P2-TELEGRAM-TEST.md).
+
 ## 2. Этапы и зависимости
 
 **Критический путь:** P0 → P1 → P2 (минимум 1 реальный text adapter) → P3 → P6. P4 и P5 — исследовательские ветки для звонков WhatsApp/LINE, не блокируют пользу проекта. P7 — развитие. Везде ниже статус `[ ]` означает запланировано, не выполнено.
