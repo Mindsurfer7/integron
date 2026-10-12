@@ -1,6 +1,6 @@
 # Integron
 
-Персональный AI-оператор для обращений к организациям: поиск контактов, уточнение цен и наличия по сообщениям и телефону, отчёт с источниками. **Текущий код — безопасная симуляция:** LLM, реальные звонки, WhatsApp, LINE и Telegram ещё не подключены.
+Персональный AI-оператор для обращений к организациям: поиск контактов, уточнение цен и наличия по сообщениям и телефону, отчёт с источниками. **По умолчанию — безопасная симуляция:** LLM (только по явному включению), реальные звонки и LINE пока не подключены. Telegram и WhatsApp USER доступны исключительно в экспериментальных режимах для разрешённых тестовых контактов.
 
 ## Быстрый локальный запуск (без VPS)
 
@@ -75,9 +75,21 @@ pnpm dev:demo               # purely simulated local UI
 
 For the opt-in Telegram USER worker, configure real credentials **only on your own Mac** and run `pnpm preflight:tdlib` before starting the worker. It validates configuration without logging secrets or initiating login. Successful preflight is **not** evidence that a TDLib native login/real message works. See [TDLib instructions](docs/P2-TDLIB-USER.md).
 
-P2.3 WhatsApp USER has a [research and local E2E gate](docs/P2-3-WHATSAPP-SPIKE.md), **not** an active adapter; no QR pairing or WhatsApp sends are enabled. A macOS CI job checks the credential-free TDLib unit tests, not real native ARM integration.
+P2.3 WhatsApp USER has an [experimental opt-in adapter and local E2E gate](docs/P2-3-WHATSAPP-SPIKE.md). No WhatsApp session is connected by default; live personal-account testing requires separate flags, allowlist and a manual local QR login. A macOS CI job checks the credential-free TDLib unit tests, not real native ARM integration.
 
 
 ## P1 — safe LLM planner + cited facts
 
 PostgreSQL workflow planning now has offline research fields by default, with explicit worker-only OpenAI opt-in. Incoming text produces conservative source-linked, **tentative** price/availability/delivery facts. These do not authorize any new recipient/action or constitute verified prices. [Details and setup](docs/P1-LLM-EVIDENCE.md).
+
+
+## P2.3 experimental WhatsApp USER (no automatic activation)
+
+The opt-in Baileys adapter uses a separate agent account, its own persistent local
+session, a 1–2 private-chat allowlist, confirmed provider delivery and exact quoted
+reply correlation. It is **not production-ready**; no real two-account E2E has been
+performed. `pnpm test:whatsapp:unit` runs fully offline. Only after explicitly
+setting `TEST_WHATSAPP_USER_ENABLED=true`, `WHATSAPP_LIVE_CONNECT_ENABLED=true`,
+`WHATSAPP_AGENT_JID` and `WHATSAPP_ALLOWED_JIDS` on your computer can
+`pnpm dev:agent-whatsapp` initiate QR/pairing. Never supply QR/session secrets in
+GitHub. See [P2.3 instructions](docs/P2-3-WHATSAPP-SPIKE.md).

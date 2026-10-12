@@ -112,3 +112,30 @@ test('Postgres WhatsApp delivery with unknown server ACK is never automatically 
     assert.equal((await jobs.get(run.id)).events.at(-1)?.kind, 'send_unknown_review_required');
   } finally { await adapter.close(); }
 }));
+
+
+test('Postgres paused WhatsApp workflow preserves queued outbox and resumes exactly once', {
+  skip: !process.env.DATABASE_URL
+}, () => fixture(async (db,jobs) => {
+  const run = await jobs.create('Проверь цену в разрешённом тестовом чате', {
+    transport: 'whatsapp_user_test', targetChatId: JID
+  });
+  await jobs.tick(); await jobs.tick();
+  const pending = await db.textDelivery.findUniqueOrThrow({where:{workflowId:run.id}});
+  assert.equal(pending.state,'queued');
+  assert.ok((await jobs.get(run.id)).plan);
+  await jobs.pause(run.id);
+  const sock = new FakeSocket();
+  const adapter = new WhatsAppUserTestAdapter(sock,AGENT,policy,1000);
+  try {
+    assert.equal(await flushTestTextOutbox(db,adapter,policy,1,WHATSAPP_ROUTE),0);
+    assert.equal(sock.sends,0);
+    assert.equal((await db.textDelivery.findUniqueOrThrow({where:{workflowId:run.id}})).state,'queued');
+    const resumed = new DurableOrchestrator(db,undefined,undefined,undefined,policy);
+    await resumed.resume(run.id);
+    assert.equal(await flushTestTextOutbox(db,adapter,policy,1,WHATSAPP_ROUTE),1);
+    assert.equal(sock.sends,1);
+    assert.equal(await flushTestTextOutbox(db,adapter,policy,1,WHATSAPP_ROUTE),0);
+    assert.equal((await db.textDelivery.findUniqueOrThrow({where:{workflowId:run.id}})).state,'sent');
+  } finally { await adapter.close(); }
+}));
