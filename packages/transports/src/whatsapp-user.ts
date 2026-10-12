@@ -60,6 +60,7 @@ export class WhatsAppUserTestAdapter {
   private readonly policy: TestTextPolicy;
   private readonly ackTimeoutMs: number;
   private readonly confirmed = new Set<string>();
+  private inFlight = false;
   private readonly waiters = new Map<string, Pending>();
   private readonly replies = new Set<(message: IncomingText) => Promise<unknown>>();
   private readonly onMessage: (event: any) => void;
@@ -89,7 +90,7 @@ export class WhatsAppUserTestAdapter {
       }
     };
     this.onAck = event => {
-      if (!Array.isArray(event)) return;
+      if (!this.inFlight || !Array.isArray(event)) return;
       for (const item of event) {
         const key = item?.key;
         const jid = key?.remoteJid;
@@ -126,6 +127,10 @@ export class WhatsAppUserTestAdapter {
     if (typeof intent.body !== 'string' || intent.body.length > 1024 || !intent.body.trim()) {
       throw new Error('Invalid test message text');
     }
+    if (this.inFlight) throw new Error('Concurrent WhatsApp sends not allowed; outcome unknown');
+    this.inFlight = true;
+    this.confirmed.clear();
+    try {
     const result = await this.client.sendMessage(jid, { text: intent.body });
     const key = result?.key;
     if (!key || typeof key.id !== 'string' || !MESSAGE_ID.test(key.id) ||
@@ -149,6 +154,10 @@ export class WhatsAppUserTestAdapter {
     }
     this.confirmed.delete(correlation);
     return { providerMessageId: key.id };
+    } finally {
+      this.inFlight = false;
+      this.confirmed.clear();
+    }
   }
 
   async close(): Promise<void> {
