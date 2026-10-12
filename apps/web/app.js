@@ -116,6 +116,9 @@ async function refreshWorkflows() {
   workflowDetail.append(element('h3', 'Поручение #' + active.id.slice(0, 8)));
   workflowDetail.append(element('p', 'Состояние: ' + active.state + ', шаг: ' + active.step));
   if (active.plan) workflowDetail.append(element('p', 'Канал: ' + (active.transport === 'mock' ? 'mock' : active.transport === 'telegram_test' ? 'Telegram Bot test' : 'Telegram USER TDLib test') + ' · внешняя отправка: ' + (active.transport === 'mock' ? 'нет' : 'только allowlist')));
+  if (active.plan?.research?.fields) {
+    workflowDetail.append(element('p', 'План исследования: ' + active.plan.research.fields.join(', ')));
+  }
   if (active.delivery) {
     workflowDetail.append(element('p', 'Доставка: ' + active.delivery.state +
       (active.delivery.state === 'unknown' ? ' · результат неизвестен, автоматической повторной отправки нет' : '')));
@@ -127,6 +130,17 @@ async function refreshWorkflows() {
       transcript.append(element('p', (m.direction === 'in' ? 'Получено: ' : 'Отправлено: ') + m.body));
     }
     workflowDetail.append(transcript);
+  }
+  if (active.facts?.length) {
+    const facts = element('div');
+    facts.append(element('h3', 'Факты и источники'));
+    for (const f of active.facts) {
+      const original = active.messages?.find(m => m.id === f.messageId);
+      if (!original || original.body.slice(f.startOffset, f.endOffset) !== f.quote) continue;
+      facts.append(element('p', f.field + ': ' + f.value + ' · непроверенное утверждение собеседника'));
+      facts.append(element('small', 'Цитата: «' + f.quote + '» · сообщение ' + original.providerMessageId));
+    }
+    workflowDetail.append(facts);
   }
   if (active.demoTaskId) {
     const details = element('button', 'Открыть результаты и вопрос');
@@ -153,7 +167,7 @@ document.querySelector('#workflow-form').addEventListener('submit', async event 
     error.textContent = '';
     const goal = document.querySelector('#workflow-goal').value;
     const transport = document.querySelector('#workflow-transport').value;
-    const targetChatId = transport === 'telegram_test' ? document.querySelector('#workflow-chat').value.trim() : undefined;
+    const targetChatId = transport !== 'mock' ? document.querySelector('#workflow-chat').value.trim() : undefined;
     const { workflow } = await request('/api/workflows', 'POST', { goal, transport, targetChatId });
     activeWorkflowId = workflow.id;
     await refreshWorkflows();
@@ -168,5 +182,5 @@ refreshWorkflows().then(() => {
 
 const workflowTransport = document.querySelector('#workflow-transport');
 workflowTransport.addEventListener('change', () => {
-  document.querySelector('#workflow-target').hidden = workflowTransport.value !== 'telegram_test';
+  document.querySelector('#workflow-target').hidden = workflowTransport.value === 'mock';
 });

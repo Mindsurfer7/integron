@@ -67,7 +67,8 @@ export class DurableOrchestrator {
     if (!UUID.test(id)) throw new DemoError(404, 'WORKFLOW_NOT_FOUND', 'Поручение не найдено');
     const run = await this.db.workflowRun.findUnique({
       where: { id }, include: { events: { orderBy: { createdAt: 'asc' } },
-        delivery: true, messages: { orderBy: { createdAt: 'asc' } } }
+        delivery: true, messages: { orderBy: { createdAt: 'asc' } },
+        facts: { orderBy: { createdAt: 'asc' } } }
     });
     if (!run) throw new DemoError(404, 'WORKFLOW_NOT_FOUND', 'Поручение не найдено');
     return run;

@@ -36,7 +36,7 @@ export class MockResearchPlanner implements ResearchPlanner {
 const PLAN_JSON_SCHEMA = {
   type: 'object', additionalProperties: false,
   properties: {
-    fields: { type: 'array', items: { type: 'string', enum: RESEARCH_FIELDS }, minItems: 1, maxItems: 4 },
+    fields: { type: 'array', items: { type: 'string', enum: RESEARCH_FIELDS } },
     rationale: { type: 'string' }
   },
   required: ['fields', 'rationale']

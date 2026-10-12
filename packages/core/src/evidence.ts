@@ -25,14 +25,14 @@ export function extractQuotedFacts(text: string): EvidenceCandidate[] {
   if (typeof text !== 'string' || text.length > 2000) return [];
   const candidates: EvidenceCandidate[] = [];
   // Require explicit currency to avoid treating arbitrary IDs as prices.
-  const price = matchAt(text, /(?:\b\d[\d \u00a0.,]{0,15}\s?(?:THB|USD|EUR|RUB|руб(?:лей|ля)?|бат(?:ов|а)?|₽|\$|€)\b|[$€₽]\s?\d[\d \u00a0.,]{0,15})/i, 'price');
+  const price = matchAt(text, /(?<![\p{L}\p{N}])(?:\d[\d \u00a0.,]{0,15}\s?(?:THB|USD|EUR|RUB|руб(?:лей|ля)?|бат(?:ов|а)?|₽|\$|€)|[$€₽]\s?\d[\d \u00a0.,]{0,15})(?![\p{L}])/iu, 'price');
   if (price) candidates.push(price);
   // Negative patterns first; do not incorrectly claim availability from "нет в наличии".
-  const unavailable = matchAt(text, /\b(?:нет в наличии|не доступн[а-я]*|out of stock|not available|sold out)\b/i, 'availability');
+  const unavailable = matchAt(text, /(?<![\p{L}])(?:нет в наличии|не доступн[а-я]*|out of stock|not available|sold out)(?![\p{L}])/iu, 'availability');
   const available = unavailable ? null :
-    matchAt(text, /\b(?:есть в наличии|в наличии|доступн[а-я]*|in stock|available)\b/i, 'availability');
+    matchAt(text, /(?<![\p{L}])(?:есть в наличии|в наличии|доступн[а-я]*|in stock|available)(?![\p{L}])/iu, 'availability');
   if (unavailable || available) candidates.push((unavailable ?? available)!);
-  const time = matchAt(text, /\b\d{1,3}\s?(?:дн(?:я|ей|ь)|час(?:а|ов)?|weeks?|days?|hours?)\b/i, 'delivery');
+  const time = matchAt(text, /(?<![\p{L}\p{N}])\d{1,3}\s?(?:дн(?:я|ей|ь)|час(?:а|ов)?|weeks?|days?|hours?)(?![\p{L}])/iu, 'delivery');
   if (time) candidates.push(time);
   return candidates;
 }
