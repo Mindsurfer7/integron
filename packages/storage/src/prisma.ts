@@ -23,6 +23,7 @@ export class PrismaDemoTaskService {
     return rows.map(row => fromJson(row.payload));
   }
   async get(id: string): Promise<DemoTask> {
+    if (!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/.test(id)) throw new DemoError(404, 'TASK_NOT_FOUND', 'Демонстрационная задача не найдена');
     const row = await this.prisma.demoTask.findUnique({ where: { id } });
     if (!row) throw new DemoError(404, 'TASK_NOT_FOUND', 'Демонстрационная задача не найдена');
     return fromJson(row.payload);
@@ -32,7 +33,7 @@ export class PrismaDemoTaskService {
     const task = new DemoTaskStore().create(goal);
     await this.prisma.$transaction(async tx => {
       // Serialize quota checks across concurrent requests (single owner, P0).
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(71615321)`;
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(71615321)::text`;
       const count = await tx.demoTask.count();
       if (count >= 100) throw new DemoError(429, 'DEMO_LIMIT', 'Лимит: 100 демонстрационных задач');
       await tx.demoTask.create({
@@ -48,6 +49,7 @@ export class PrismaDemoTaskService {
     return this.mutate(taskId, store => store.stop(taskId));
   }
   private async mutate(taskId: string, action: (store: DemoTaskStore) => DemoTask): Promise<DemoTask> {
+    if (!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/.test(taskId)) throw new DemoError(404, 'TASK_NOT_FOUND', 'Демонстрационная задача не найдена');
     for (let attempt = 0; attempt < 3; attempt++) {
       const row = await this.prisma.demoTask.findUnique({ where: { id: taskId } });
       if (!row) throw new DemoError(404, 'TASK_NOT_FOUND', 'Демонстрационная задача не найдена');
