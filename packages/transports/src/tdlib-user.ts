@@ -18,6 +18,13 @@ function decimalId(value: unknown): string | null {
   if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) return String(value);
   return null;
 }
+/** TDLib temporary message IDs are signed int53; final provider IDs are positive. */
+function temporaryId(value: unknown): string | null {
+  if (typeof value === 'number') return Number.isSafeInteger(value) && value !== 0 ? String(value) : null;
+  if (typeof value !== 'string' || !/^-?[1-9][0-9]*$/.test(value)) return null;
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number !== 0 ? String(number) : null;
+}
 function numericChatId(value: string): number {
   const n = Number(value);
   if (!Number.isSafeInteger(n) || n <= 0) throw new Error('TDLib chat ID exceeds JS safe integer');
@@ -85,7 +92,7 @@ export class TdlibUserTransport {
   private async processUpdate(update: ObjectValue): Promise<void> {
     const kind = update?._;
     if (kind === 'updateMessageSendSucceeded' || kind === 'updateMessageSendFailed') {
-      const old = decimalId(update.old_message_id ?? update.message_id);
+      const old = temporaryId(update.old_message_id ?? update.message_id);
       const id = decimalId(update.message?.id);
       if (!old) return;
       if (kind === 'updateMessageSendSucceeded' && id) {
@@ -124,13 +131,18 @@ export class TdlibUserTransport {
         clear_draft: false
       }
     });
-    const tempId = decimalId(sent?.id);
+    const tempId = temporaryId(sent?.id);
     if (!tempId) throw new Error('TDLib send result lacks temporary message ID');
-    if (sent.sending_state?._ === 'messageSendingStateFailed') throw new TdlibDefiniteSendError();
-    if (!sent.sending_state) return { providerMessageId: tempId };
-    if (this.failed.has(tempId)) throw new TdlibDefiniteSendError();
+    if (sent.sending_state?._ === 'messageSendingStateFailed' || this.failed.has(tempId)) {
+      throw new TdlibDefiniteSendError();
+    }
     const immediate = this.successful.get(tempId);
     if (immediate) return { providerMessageId: immediate };
+    // Without a confirmed final ID, the outcome is UNKNOWN, never a successful
+    // delivery. TDLib may omit sending_state in a malformed/incompatible response.
+    if (sent.sending_state?._ !== 'messageSendingStatePending') {
+      throw new Error('TDLib send has no confirmed provider ID; outcome unknown');
+    }
     const providerId = await new Promise<string>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.waiters.delete(tempId);
