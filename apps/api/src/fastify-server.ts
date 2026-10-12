@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { DemoTaskStore } from '../../../packages/core/src/demo.ts';
 import { SqliteDemoTaskRepository } from '../../../packages/storage/src/sqlite.ts';
 import { buildFastifyApp, type TaskService, type WorkflowApi } from './fastify-app.ts';
-import { readTestTextPolicy, readTdlibUserPolicy } from '../../../packages/transports/src/contracts.ts';
+import { readTestTextPolicy, readTdlibUserPolicy, readWhatsAppUserPolicy } from '../../../packages/transports/src/contracts.ts';
 
 const profile = process.env.RUNTIME_PROFILE ?? 'demo';
 if (profile !== 'demo' && profile !== 'local' && profile !== 'postgres') {
@@ -28,7 +28,7 @@ if (profile === 'postgres') {
   await client.$connect();
   store = new PrismaDemoTaskService(client);
   const { DurableOrchestrator } = await import('../../../packages/storage/src/orchestrator.ts');
-  workflows = new DurableOrchestrator(client, readTestTextPolicy(process.env), readTdlibUserPolicy(process.env));
+  workflows = new DurableOrchestrator(client, readTestTextPolicy(process.env), readTdlibUserPolicy(process.env), readWhatsAppUserPolicy(process.env));
   disconnect = () => client.$disconnect();
 }
 
