@@ -132,18 +132,31 @@ export class DurableOrchestrator {
 
   /** Pause is a durable state, not a held lease. No new step can be claimed. */
   async pause(id: string) {
-    const run = await this.get(id);
-    if (run.state === 'paused') return run;
-    if (TERMINAL.includes(run.state)) throw new DemoError(409, 'WORKFLOW_FINISHED', 'Поручение уже завершено');
-    await this.db.$transaction(async tx => {
-      const changed = await tx.workflowRun.updateMany({
-        where: { id, state: { in: ACTIVE } },
-        data: { state: 'paused', pausedFrom: run.state,
-          leaseToken: null, leasedUntil: null }
+    // Compare the exact state read with the state being paused. Without CAS a
+    // worker may advance running -> waiting_external between get() and update(),
+    // leaving pausedFrom=running with step=await_external. Resume would then
+    // permanently strand the workflow in the wrong state.
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const run = await this.get(id);
+      if (run.state === 'paused') return run;
+      if (TERMINAL.includes(run.state)) {
+        throw new DemoError(409, 'WORKFLOW_FINISHED', 'Поручение уже завершено');
+      }
+      const changed = await this.db.$transaction(async tx => {
+        const result = await tx.workflowRun.updateMany({
+          where: { id, state: run.state, step: run.step,
+            leaseToken: run.leaseToken, pausedFrom: null },
+          data: { state: 'paused', pausedFrom: run.state,
+            leaseToken: null, leasedUntil: null }
+        });
+        if (result.count) await tx.workflowEvent.create({
+          data: { workflowId: id, kind: 'paused' }
+        });
+        return result.count;
       });
-      if (changed.count) await tx.workflowEvent.create({data:{workflowId:id,kind:'paused'}});
-    });
-    return this.get(id);
+      if (changed) return this.get(id);
+    }
+    throw new DemoError(409, 'CONCURRENT_UPDATE', 'Поручение изменилось. Повторите паузу.');
   }
 
   /** Restore the previous waiting/running state without replaying the outbox. */
