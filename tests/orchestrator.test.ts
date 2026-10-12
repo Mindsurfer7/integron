@@ -106,3 +106,34 @@ test('queued stop never creates messages and invalid goals are rejected', {
   assert.equal(await db.demoTask.count(), 0);
   assert.equal(await db.ownerNotification.count(), 0);
 }));
+
+test('P1 normalized targets and conversations distinguish mock fixtures from consented test recipients', {
+  skip: !process.env.DATABASE_URL
+}, () => fixture(async (db, _jobs) => {
+  const policy = { enabled: true, allowedChatIds: new Set(['42']) };
+  const jobs = new DurableOrchestrator(db, policy);
+  const mock = await jobs.create('Сравнить вымышленные предложения');
+  const initial = await jobs.get(mock.id);
+  assert.equal(initial.targets.length, 3);
+  assert.equal(initial.conversations.length, 3);
+  assert.ok(initial.targets.every(t => t.origin === 'mock_fixture' && t.recipientId === null));
+  assert.ok(initial.conversations.every(c => c.state === 'mock_simulation'));
+  await jobs.stop(mock.id);
+
+  const external = await jobs.create('Уточни цену для теста', {
+    transport: 'telegram_test', targetChatId: '42'
+  });
+  let state = await jobs.get(external.id);
+  assert.equal(state.targets.length, 1);
+  assert.equal(state.targets[0].origin, 'explicit_test_allowlist');
+  assert.equal(state.targets[0].recipientId, '42');
+  assert.equal(state.conversations[0].state, 'planned');
+  await jobs.tick();
+  await jobs.tick();
+  state = await jobs.get(external.id);
+  assert.equal(state.state, 'waiting_external');
+  assert.equal(state.conversations[0].state, 'waiting_external');
+  assert.equal((await jobs.stop(external.id)).conversations[0].state, 'cancelled');
+  assert.equal(await db.workflowTarget.count({ where: { workflowId: external.id } }), 1);
+  assert.equal(await db.workflowConversation.count({ where: { workflowId: external.id } }), 1);
+}));
