@@ -65,6 +65,7 @@ model WorkflowRun {
   facts           WorkflowFact[]
   demoTaskId      String?         @db.Uuid
   state           String          @default("queued")
+  pausedFrom      String?
   step            String          @default("plan")
   plan            Json?           @db.JsonB
   availableAt     DateTime        @default(now())

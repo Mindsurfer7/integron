@@ -166,3 +166,11 @@
 - [ ] Production WhatsApp adapter (not created; feature remains unavailable).
 
 No personal account E2E, macOS ARM native library load, or WhatsApp messages are claimed by this offline follow-up.
+
+
+## P1 — pause/resume (2026-10-13)
+
+- [x] Durable paused state and preserved previous state; atomic API pause/resume transitions.
+- [x] Worker cannot claim paused workflow; lease invalidated on pause.
+- [x] UI pause/resume and stop from pause; resume does not create a second outbox.
+- [ ] Real-account E2E; in-flight send cannot be revoked after transport dispatch.

@@ -148,6 +148,15 @@ async function refreshWorkflows() {
     workflowDetail.append(details);
   }
   if (!['completed', 'cancelled', 'failed'].includes(active.state)) {
+    const pause = element('button', active.state === 'paused' ? 'Продолжить поручение' : 'Пауза');
+    pause.addEventListener('click', async () => {
+      try {
+        await request('/api/workflows/' + active.id +
+          (active.state === 'paused' ? '/resume' : '/pause'), 'POST');
+        await refreshWorkflows();
+      } catch (err) { showError(err); }
+    });
+    workflowDetail.append(pause);
     const cancel = element('button', 'Остановить поручение');
     cancel.addEventListener('click', async () => {
       try { await request('/api/workflows/' + active.id + '/stop', 'POST'); await refreshWorkflows(); }

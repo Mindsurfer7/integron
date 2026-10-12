@@ -96,8 +96,8 @@ export class DurableOrchestrator {
     const state = completed ? 'completed' : 'cancelled';
     await this.db.$transaction(async tx => {
       const changed = await tx.workflowRun.updateMany({
-        where: { id, state: { in: ACTIVE } },
-        data: { state, step: 'done', leaseToken: null, leasedUntil: null, finishedAt: new Date() }
+        where: { id, state: { in: [...ACTIVE, 'paused'] } },
+        data: { state, pausedFrom: null, step: 'done', leaseToken: null, leasedUntil: null, finishedAt: new Date() }
       });
       if (changed.count) await tx.workflowEvent.create({
         data: { workflowId: id, kind: completed ? 'completed' : 'stopped' }
@@ -114,6 +114,40 @@ export class DurableOrchestrator {
         if (!(error instanceof DemoError && ['TASK_NOT_FOUND', 'TASK_FINISHED'].includes(error.code))) throw error;
       }
     }
+    return this.get(id);
+  }
+
+  /** Pause is a durable state, not a held lease. No new step can be claimed. */
+  async pause(id: string) {
+    const run = await this.get(id);
+    if (run.state === 'paused') return run;
+    if (TERMINAL.includes(run.state)) throw new DemoError(409, 'WORKFLOW_FINISHED', 'Поручение уже завершено');
+    await this.db.$transaction(async tx => {
+      const changed = await tx.workflowRun.updateMany({
+        where: { id, state: { in: ACTIVE } },
+        data: { state: 'paused', pausedFrom: run.state,
+          leaseToken: null, leasedUntil: null }
+      });
+      if (changed.count) await tx.workflowEvent.create({data:{workflowId:id,kind:'paused'}});
+    });
+    return this.get(id);
+  }
+
+  /** Restore the previous waiting/running state without replaying the outbox. */
+  async resume(id: string) {
+    const run = await this.get(id);
+    if (run.state !== 'paused') throw new DemoError(409, 'NOT_PAUSED', 'Поручение не на паузе');
+    if (!run.pausedFrom || !ACTIVE.includes(run.pausedFrom)) {
+      throw new DemoError(409, 'INVALID_PAUSE_STATE', 'Некорректное состояние паузы');
+    }
+    await this.db.$transaction(async tx => {
+      const changed = await tx.workflowRun.updateMany({
+        where: { id, state: 'paused', pausedFrom: run.pausedFrom },
+        data: { state: run.pausedFrom, pausedFrom: null, availableAt: new Date(),
+          leaseToken: null, leasedUntil: null }
+      });
+      if (changed.count) await tx.workflowEvent.create({data:{workflowId:id,kind:'resumed'}});
+    });
     return this.get(id);
   }
 
