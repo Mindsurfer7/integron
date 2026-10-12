@@ -7,12 +7,46 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Separate P0 mock table; production entities will receive normalized schema in P1.
-// Never put real provider tokens, passwords or transcripts into this JSON.
+// P0 scripted tasks; P1 adds durable owner decisions/notifications.
+// Real contacts/conversations/voice sessions are not yet implemented.
 model DemoTask {
-  id        String   @id @db.Uuid
-  payload   Json     @db.JsonB
-  revision  Int      @default(0)
-  createdAt DateTime
+  id             String               @id @db.Uuid
+  payload        Json                 @db.JsonB
+  revision       Int                  @default(0)
+  createdAt      DateTime
+  clarifications OwnerClarification[]
   @@index([createdAt])
+}
+
+model OwnerClarification {
+  id           String             @id @db.Uuid
+  taskId       String             @db.Uuid
+  task         DemoTask           @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  state        String             @default("pending")
+  expiresAt    DateTime
+  createdAt    DateTime           @default(now())
+  answeredAt   DateTime?
+  choice       String?
+  notification OwnerNotification?
+  @@index([state, expiresAt])
+  @@index([taskId])
+}
+
+model OwnerNotification {
+  id              String             @id @default(uuid()) @db.Uuid
+  clarificationId String             @unique @db.Uuid
+  clarification   OwnerClarification @relation(fields: [clarificationId], references: [id], onDelete: Cascade)
+  state           String             @default("queued")
+  attempts        Int                @default(0)
+  leasedUntil     DateTime?
+  messageId       String?
+  lastError       String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  @@index([state, createdAt])
+}
+
+model TelegramPollingCursor {
+  id           Int    @id
+  lastUpdateId BigInt @default(0)
 }
