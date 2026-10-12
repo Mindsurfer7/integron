@@ -10,7 +10,16 @@ export interface TaskService {
   stop(taskId: string): DemoTask | Promise<DemoTask>;
 }
 
-export function buildFastifyApp(store: TaskService, profile: 'demo' | 'local' | 'postgres') {
+export interface WorkflowApi {
+  list(): Promise<unknown>;
+  get(id: string): Promise<unknown>;
+  create(goal: unknown): Promise<unknown>;
+  stop(id: string): Promise<unknown>;
+}
+
+export function buildFastifyApp(
+  store: TaskService, profile: 'demo' | 'local' | 'postgres', workflows?: WorkflowApi
+) {
   const app = Fastify({ logger: false, bodyLimit: 8_192, trustProxy: false });
 
   // No authentication exists yet. Bind to loopback and reject hostile Host/Origin.
@@ -73,5 +82,18 @@ export function buildFastifyApp(store: TaskService, profile: 'demo' | 'local' | 
   app.post<{ Params: { id: string } }>('/api/tasks/:id/stop', async request => ({
     task: await store.stop(request.params.id)
   }));
+  if (workflows) {
+    app.get('/api/workflows', async () => ({ workflows: await workflows.list() }));
+    app.post<{ Body: { goal?: unknown } }>('/api/workflows', async (request, reply) => {
+      const workflow = await workflows.create(request.body?.goal);
+      return reply.code(201).send({ workflow });
+    });
+    app.get<{ Params: { id: string } }>('/api/workflows/:id', async request => ({
+      workflow: await workflows.get(request.params.id)
+    }));
+    app.post<{ Params: { id: string } }>('/api/workflows/:id/stop', async request => ({
+      workflow: await workflows.stop(request.params.id)
+    }));
+  }
   return app;
 }

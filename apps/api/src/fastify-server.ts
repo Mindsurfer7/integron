@@ -2,7 +2,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { DemoTaskStore } from '../../../packages/core/src/demo.ts';
 import { SqliteDemoTaskRepository } from '../../../packages/storage/src/sqlite.ts';
-import { buildFastifyApp, type TaskService } from './fastify-app.ts';
+import { buildFastifyApp, type TaskService, type WorkflowApi } from './fastify-app.ts';
 
 const profile = process.env.RUNTIME_PROFILE ?? 'demo';
 if (profile !== 'demo' && profile !== 'local' && profile !== 'postgres') {
@@ -18,6 +18,7 @@ const sqlite = profile === 'local'
   : undefined;
 let store: TaskService = new DemoTaskStore(sqlite);
 let disconnect: (() => Promise<void>) | undefined;
+let workflows: WorkflowApi | undefined;
 if (profile === 'postgres') {
   if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL required for postgres runtime');
   const { PrismaClient } = await import('@prisma/client');
@@ -25,10 +26,12 @@ if (profile === 'postgres') {
   const client = new PrismaClient();
   await client.$connect();
   store = new PrismaDemoTaskService(client);
+  const { DurableOrchestrator } = await import('../../../packages/storage/src/orchestrator.ts');
+  workflows = new DurableOrchestrator(client);
   disconnect = () => client.$disconnect();
 }
 
-const app = buildFastifyApp(store, profile);
+const app = buildFastifyApp(store, profile, workflows);
 async function shutdown() {
   await app.close();
   sqlite?.close();
