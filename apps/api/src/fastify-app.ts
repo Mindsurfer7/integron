@@ -114,6 +114,18 @@ export function buildFastifyApp(
         )
       })
     );
+    // Only synthetic mock bookings. No external action or payment can occur.
+    // Real approvals require a trusted server-side executor and stronger auth.
+    app.post<{ Params: { id: string } }>('/api/workflows/:id/approvals/demo', async request => ({
+      approval: await workflows.requestDemoApproval(request.params.id)
+    }));
+    app.post<{ Params: { id: string; approvalId: string } }>(
+      '/api/workflows/:id/approvals/:approvalId/consume-demo', async request => ({
+        result: await workflows.consumeDemoApproval(
+          request.params.id, request.params.approvalId
+        )
+      })
+    );
     app.post<{ Params: { id: string } }>('/api/workflows/:id/stop', async request => ({
       workflow: await workflows.stop(request.params.id)
     }));
