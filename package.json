@@ -19,7 +19,7 @@
     "test:tdlib:unit": "node --experimental-strip-types --test tests/tdlib-unit.test.ts",
     "preflight:local": "node scripts/local-preflight.mjs local",
     "preflight:tdlib": "node scripts/local-preflight.mjs tdlib",
-    "test:postgres": "node --experimental-strip-types --experimental-sqlite --test-concurrency=1 --test tests/postgres.test.ts tests/telegram.test.ts tests/orchestrator.test.ts tests/text-transport.test.ts tests/tdlib-user.test.ts tests/llm-workflow.test.ts tests/pause-resume.test.ts tests/whatsapp-postgres.test.ts tests/budget.test.ts tests/owner-questions.test.ts",
+    "test:postgres": "node --experimental-strip-types --experimental-sqlite --test-concurrency=1 --test tests/postgres.test.ts tests/telegram.test.ts tests/orchestrator.test.ts tests/text-transport.test.ts tests/tdlib-user.test.ts tests/llm-workflow.test.ts tests/pause-resume.test.ts tests/whatsapp-postgres.test.ts tests/budget.test.ts tests/owner-questions.test.ts tests/approvals.test.ts",
     "dev:telegram": "RUNTIME_PROFILE=postgres OUTBOUND_ENABLED=false node --experimental-strip-types --experimental-sqlite apps/worker/src/telegram.ts",
     "dev:orchestrator": "RUNTIME_PROFILE=postgres OUTBOUND_ENABLED=false node --experimental-strip-types apps/worker/src/orchestrator.ts",
     "dev:agent-telegram": "RUNTIME_PROFILE=postgres OUTBOUND_ENABLED=false node --experimental-strip-types apps/worker/src/agent-telegram.ts",
