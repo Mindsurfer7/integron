@@ -35,6 +35,7 @@ try {
       if (stopping) break;
       await flushOwnerOutbox(prisma, bot);
       await flushWorkflowOwnerOutbox(prisma, bot);
+      await flushWorkflowApprovalOutbox(prisma, bot);
     } catch (error) {
       // Never log Telegram URL/token, request body or personal data.
       console.error('Telegram worker cycle failed:', error instanceof Error ? error.name : 'Unknown error');
