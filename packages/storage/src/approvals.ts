@@ -173,6 +173,14 @@ export async function decideWorkflowApproval(
         approval.workflow.transport !== 'mock') {
       throw new DemoError(409, 'APPROVAL_CLOSED', 'Разрешение завершено или просрочено');
     }
+    // Fence stop/completion against a racing approval decision. The parent
+    // row is locked by updateMany; stop cancels approvals in the same tx.
+    const parent = await tx.workflowRun.updateMany({
+      where: { id: approval.workflowId, transport: 'mock',
+        state: { in: [...ACTIVE, 'paused'] } },
+      data: { updatedAt: new Date() }
+    });
+    if (!parent.count) throw new DemoError(409, 'APPROVAL_CLOSED', 'Поручение завершено');
     const changed = await tx.workflowApproval.updateMany({
       where: { id: approval.id, state: 'pending', expiresAt: { gt: new Date() } },
       data: { state: targetState, decisionVia: via, decidedAt: new Date() }
