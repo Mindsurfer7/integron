@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaDemoTaskService } from '../../../packages/storage/src/prisma.ts';
 import { DurableOrchestrator } from '../../../packages/storage/src/orchestrator.ts';
 import { readOwnerIdentity, expireWorkflowOwnerQuestions } from '../../../packages/storage/src/owner-questions.ts';
+import { expireWorkflowApprovals } from '../../../packages/storage/src/approvals.ts';
 import { plannerFromEnvironment } from '../../../packages/llm/src/planner.ts';
 import { readTestTextPolicy, readTdlibUserPolicy, readWhatsAppUserPolicy } from '../../../packages/transports/src/contracts.ts';
 
@@ -24,6 +25,7 @@ try {
     try {
       await tasks.expirePending();
       await expireWorkflowOwnerQuestions(db);
+      await expireWorkflowApprovals(db);
       const worked = await orchestrator.tick();
       if (!worked) await new Promise(resolve => setTimeout(resolve, 1000));
     } catch (error) {

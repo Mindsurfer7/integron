@@ -67,6 +67,7 @@ model WorkflowRun {
   targets         WorkflowTarget[]
   conversations   WorkflowConversation[]
   ownerQuestions   WorkflowOwnerQuestion[]
+  approvals        WorkflowApproval[]
   maxCostCents    Int             @default(500)
   spentCents      Int             @default(0)
   demoTaskId      String?         @db.Uuid
@@ -241,6 +242,50 @@ model WorkflowOwnerNotification {
   lastError      String?
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
+  @@index([state, createdAt])
+  @@index([messageId])
+}
+
+// P1 simulation-only owner approvals. An approval is NOT a provider action.
+// Exact action intent digest, recipient, amount and currency are immutable.
+// No real payments, bookings or sensitive-data disclosures are permitted.
+model WorkflowApproval {
+  id              String                  @id @default(uuid()) @db.Uuid
+  workflowId      String                  @db.Uuid
+  workflow        WorkflowRun             @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  requestKey      String
+  mode            String                  @default("simulation_only")
+  actionType      String
+  recipientRef    String
+  summary         String
+  amountMinor     Int?
+  currency        String?
+  intentDigest    String
+  ownerUserId     String
+  ownerChatId     String
+  state           String                  @default("pending")
+  decisionVia     String?
+  decidedAt       DateTime?
+  consumedAt      DateTime?
+  expiresAt       DateTime
+  createdAt       DateTime                @default(now())
+  notification    WorkflowApprovalNotification?
+  @@unique([workflowId, requestKey])
+  @@index([workflowId, state])
+  @@index([state, expiresAt])
+}
+
+model WorkflowApprovalNotification {
+  id             String           @id @default(uuid()) @db.Uuid
+  approvalId     String           @unique @db.Uuid
+  approval       WorkflowApproval @relation(fields: [approvalId], references: [id], onDelete: Cascade)
+  state          String           @default("queued")
+  attempts       Int              @default(0)
+  leasedUntil    DateTime?
+  messageId      String?
+  lastError      String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
   @@index([state, createdAt])
   @@index([messageId])
 }

@@ -19,6 +19,8 @@ export interface WorkflowApi {
   pause(id: string): Promise<unknown>;
   resume(id: string): Promise<unknown>;
   answerOwnerText(workflowId: string, questionId: string, text: unknown): Promise<unknown>;
+  requestDemoApproval(workflowId: string): Promise<unknown>;
+  consumeDemoApproval(workflowId: string, approvalId: string): Promise<unknown>;
 }
 
 export function buildFastifyApp(
@@ -109,6 +111,18 @@ export function buildFastifyApp(
       '/api/workflows/:id/owner-questions/:questionId/answer', async request => ({
         question: await workflows.answerOwnerText(
           request.params.id, request.params.questionId, request.body?.text
+        )
+      })
+    );
+    // Only synthetic mock bookings. No external action or payment can occur.
+    // Real approvals require a trusted server-side executor and stronger auth.
+    app.post<{ Params: { id: string } }>('/api/workflows/:id/approvals/demo', async request => ({
+      approval: await workflows.requestDemoApproval(request.params.id)
+    }));
+    app.post<{ Params: { id: string; approvalId: string } }>(
+      '/api/workflows/:id/approvals/:approvalId/consume-demo', async request => ({
+        result: await workflows.consumeDemoApproval(
+          request.params.id, request.params.approvalId
         )
       })
     );

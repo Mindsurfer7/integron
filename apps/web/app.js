@@ -164,6 +164,52 @@ async function refreshWorkflows() {
     }
     workflowDetail.append(facts);
   }
+  // All actions below are exclusively local mock simulations.
+  if (active.transport === 'mock' && !['completed', 'cancelled', 'failed'].includes(active.state)) {
+    const requestApproval = element('button', 'Запросить разрешение на демо-запись');
+    requestApproval.addEventListener('click', async () => {
+      try {
+        error.textContent = '';
+        await request('/api/workflows/' + active.id + '/approvals/demo', 'POST');
+        await refreshWorkflows();
+      } catch (err) { showError(err); }
+    });
+    workflowDetail.append(requestApproval);
+  }
+  if (active.approvals?.length) {
+    const approvals = element('section', undefined, 'tile');
+    approvals.append(element('h3', 'Тестовые разрешения владельца'));
+    approvals.append(element('small',
+      'Только офлайн-симуляция. Подтверждение не запускает оплату, запись или внешние действия.'));
+    for (const a of active.approvals) {
+      const item = element('div', undefined, 'tile');
+      item.append(element('p', a.actionType + ' · ' + a.recipientRef +
+        ' · ' + a.summary + ' · статус: ' + a.state));
+      item.append(element('small', 'Срок: ' + new Date(a.expiresAt).toLocaleString() +
+        ' · ID: ' + a.id + ' · Telegram: ' + (a.notification?.state ?? 'не отправлено')));
+      if (a.state === 'pending') {
+        item.append(element('small', 'Подтвердить /approve ' + a.id +
+          ' или отклонить /deny ' + a.id + ' через бот владельца.'));
+      }
+      if (a.state === 'approved') {
+        const consume = element('button', 'Выполнить офлайн-симуляцию', 'primary');
+        consume.addEventListener('click', async () => {
+          try {
+            error.textContent = '';
+            const result = await request('/api/workflows/' + active.id +
+              '/approvals/' + a.id + '/consume-demo', 'POST');
+            if (!result.result?.simulated || result.result.externalActions !== 0) {
+              throw new Error('Неверный ответ симуляции');
+            }
+            await refreshWorkflows();
+          } catch (err) { showError(err); }
+        });
+        item.append(consume);
+      }
+      approvals.append(item);
+    }
+    workflowDetail.append(approvals);
+  }
   if (active.ownerQuestions?.length) {
     const inbox = element('section', undefined, 'tile');
     inbox.append(element('h3', 'Уточнения владельца'));

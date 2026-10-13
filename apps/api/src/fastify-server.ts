@@ -4,6 +4,7 @@ import { DemoTaskStore } from '../../../packages/core/src/demo.ts';
 import { SqliteDemoTaskRepository } from '../../../packages/storage/src/sqlite.ts';
 import { buildFastifyApp, type TaskService, type WorkflowApi } from './fastify-app.ts';
 import { readTestTextPolicy, readTdlibUserPolicy, readWhatsAppUserPolicy } from '../../../packages/transports/src/contracts.ts';
+import { readOwnerIdentity } from '../../../packages/storage/src/owner-questions.ts';
 
 const profile = process.env.RUNTIME_PROFILE ?? 'demo';
 if (profile !== 'demo' && profile !== 'local' && profile !== 'postgres') {
@@ -29,7 +30,8 @@ if (profile === 'postgres') {
   store = new PrismaDemoTaskService(client);
   const { DurableOrchestrator } = await import('../../../packages/storage/src/orchestrator.ts');
   workflows = new DurableOrchestrator(client, readTestTextPolicy(process.env),
-    readTdlibUserPolicy(process.env), undefined, readWhatsAppUserPolicy(process.env));
+    readTdlibUserPolicy(process.env), undefined, readWhatsAppUserPolicy(process.env),
+    readOwnerIdentity(process.env));
   disconnect = () => client.$disconnect();
 }
 

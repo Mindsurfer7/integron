@@ -226,3 +226,27 @@ sub-scenario**, not complete P1.4 or payment approval acceptance.
 - [ ] Explicit action approvals (separate from advisory clarifications),
   callId correlation / bounded live-call waits, arbitrary multiple open
   questions on one active call, real phone E2E and full P1 acceptance.
+
+## P1 Approval Engine — bounded simulation-only permission slice (2026-10-13)
+
+See [P1-APPROVAL-ENGINE.md](P1-APPROVAL-ENGINE.md). This is an
+**implemented offline approval mechanism**, not production permission to spend.
+
+- [x] Independent `WorkflowApproval` and notification-outbox schema,
+  approval ID, workflow, fictional recipient, exact action digest, amount /
+  currency, owner identity, TTL and immutable request key.
+- [x] Verified owner Telegram `/approve` and `/deny` plus message-bound
+  buttons, fail-closed stale/wrong-owner/wrong-chat/duplicate handling.
+- [x] One-time atomic consumed state; stop, pause, expiry and ambiguous
+  delivery protection. No blind retry.
+- [x] Mock booking request + consumption demo in localhost UI/API,
+  **zero actual provider side effects**.
+- [x] CI regression tests for replay, amount tampering, concurrent
+  consumption, cross-task request and terminal controls.
+- [ ] Production approvals: authenticated public API, real recipient
+  binding, pricing/beneficiary checks, preflight budget reservation,
+  durable provider action outbox, reconciliation and legal authorization.
+- [ ] Real call-scoped approvals and interactive Mac E2E.
+
+Existing P1.1/P1.4 checkboxes remain open until the full acceptance
+criteria are met.

@@ -3,6 +3,7 @@ import { DemoError, type OwnerChoice } from '../../core/src/demo.ts';
 import { PrismaDemoTaskService } from '../../storage/src/prisma.ts';
 import { DurableOrchestrator } from '../../storage/src/orchestrator.ts';
 import { answerWorkflowOwnerQuestion, type OwnerIdentity } from '../../storage/src/owner-questions.ts';
+import { decideWorkflowApproval } from '../../storage/src/approvals.ts';
 
 const CHOICES: readonly OwnerChoice[] = ['cheapest', 'fastest', 'defer'];
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
@@ -12,6 +13,9 @@ const STOP = new RegExp('^/stop\\s+(' + UUID + ')\\s*$', 'i');
 const PAUSE = new RegExp('^/pause\\s+(' + UUID + ')\\s*$', 'i');
 const RESUME = new RegExp('^/resume\\s+(' + UUID + ')\\s*$', 'i');
 const OWNER_REPLY = new RegExp('^/reply\\s+(' + UUID + ')\\s+([\\s\\S]+)$', 'i');
+const APPROVE_COMMAND = new RegExp('^/approve\\s+(' + UUID + ')\\s*$', 'i');
+const DENY_COMMAND = new RegExp('^/deny\\s+(' + UUID + ')\\s*$', 'i');
+const APPROVAL_CALLBACK = new RegExp('^ap:(' + UUID + '):(yes|no)$', 'i');
 
 export interface TelegramUpdate {
   update_id: number;
@@ -72,6 +76,30 @@ export class TelegramBotClient {
         [{ text: '💸 Дешевле', callback_data: 'q:' + id + ':cheapest' }],
         [{ text: '⚡ Быстрее', callback_data: 'q:' + id + ':fastest' }],
         [{ text: '⏸ Отложить', callback_data: 'q:' + id + ':defer' }]
+      ] }
+    });
+    return String(result.message_id);
+  }
+  async sendApproval(approval: {
+    id: string; workflowId: string; actionType: string; recipientRef: string;
+    summary: string; amountMinor: number | null; currency: string | null;
+    expiresAt: Date;
+  }): Promise<string> {
+    // Only synthetic mock fixture approvals are sent by this iteration.
+    const amount = approval.amountMinor === null ? 'сумма не требуется' :
+      approval.amountMinor + ' минорных единиц ' + approval.currency;
+    const result = await this.call<{ message_id: number }>('sendMessage', {
+      chat_id: this.ownerChatId,
+      text: '🤖 Integron · ТЕСТОВОЕ согласование (без реального действия)' +
+        '\nЗадача #' + approval.workflowId.slice(0, 8) +
+        '\nДействие: ' + approval.actionType + ' · адресат: ' + approval.recipientRef +
+        '\nОписание: ' + approval.summary + '\nСумма: ' + amount +
+        '\nДействует до: ' + approval.expiresAt.toISOString() +
+        '\nApproval: ' + approval.id +
+        '\nПодтверждение разрешает только однократную офлайн-симуляцию.',
+      reply_markup: { inline_keyboard: [
+        [{ text: '✅ Разрешить демо', callback_data: 'ap:' + approval.id + ':yes' }],
+        [{ text: '⛔ Отклонить', callback_data: 'ap:' + approval.id + ':no' }]
       ] }
     });
     return String(result.message_id);
@@ -229,6 +257,85 @@ export async function flushWorkflowOwnerOutbox(
   return sent;
 }
 
+/** Approval notifications are separate from free-text questions and demo choices.
+ * Uncertain Telegram sends become UNKNOWN, never automatically retried.
+ */
+export async function flushWorkflowApprovalOutbox(
+  prisma: PrismaClient, bot: TelegramBotClient, limit = 10
+): Promise<number> {
+  await prisma.workflowApprovalNotification.updateMany({
+    where: { state: 'sending', leasedUntil: { lt: new Date() } },
+    data: { state: 'unknown', leasedUntil: null,
+      lastError: 'Interrupted approval notice: delivery outcome unknown' }
+  });
+  const items = await prisma.workflowApprovalNotification.findMany({
+    where: { state: 'queued' },
+    include: { approval: { include: {
+      workflow: { select: { state: true, transport: true } }
+    } } },
+    orderBy: { createdAt: 'asc' }, take: limit
+  });
+  let sent = 0;
+  for (const item of items) {
+    const a = item.approval;
+    if (a.workflow.state === 'paused') continue;
+    if (a.state !== 'pending' || a.expiresAt <= new Date() ||
+        a.mode !== 'simulation_only' || a.workflow.transport !== 'mock' ||
+        !['queued', 'running', 'waiting_owner', 'waiting_external'].includes(a.workflow.state) ||
+        a.ownerUserId !== bot.ownerUserId || a.ownerChatId !== bot.ownerChatId) {
+      await prisma.workflowApprovalNotification.updateMany({
+        where: { id: item.id, state: 'queued' }, data: { state: 'cancelled' }
+      });
+      continue;
+    }
+    const claim = await prisma.workflowApprovalNotification.updateMany({
+      where: { id: item.id, state: 'queued' },
+      data: { state: 'sending', attempts: { increment: 1 },
+        leasedUntil: new Date(Date.now() + 35_000) }
+    });
+    if (!claim.count) continue;
+    try {
+      const current = await prisma.workflowApproval.findUnique({
+        where: { id: a.id }, include: {
+          workflow: { select: { state: true, transport: true } }
+        }
+      });
+      if (current?.workflow.state === 'paused') {
+        await prisma.workflowApprovalNotification.updateMany({
+          where: { id: item.id, state: 'sending' },
+          data: { state: 'queued', attempts: { decrement: 1 }, leasedUntil: null }
+        });
+        continue;
+      }
+      if (!current || current.state !== 'pending' || current.expiresAt <= new Date() ||
+          current.mode !== 'simulation_only' || current.workflow.transport !== 'mock' ||
+          !['queued', 'running', 'waiting_owner', 'waiting_external'].includes(current.workflow.state) ||
+          current.ownerUserId !== bot.ownerUserId || current.ownerChatId !== bot.ownerChatId) {
+        await prisma.workflowApprovalNotification.updateMany({
+          where: { id: item.id, state: 'sending' },
+          data: { state: 'cancelled', leasedUntil: null }
+        });
+        continue;
+      }
+      const messageId = await bot.sendApproval(current);
+      await prisma.workflowApprovalNotification.updateMany({
+        where: { id: item.id, state: 'sending' },
+        data: { state: 'sent', messageId, leasedUntil: null }
+      });
+      sent++;
+    } catch (error) {
+      const definite = error instanceof TelegramApiError;
+      await prisma.workflowApprovalNotification.updateMany({
+        where: { id: item.id, state: 'sending' },
+        data: { state: definite ? 'failed' : 'unknown', leasedUntil: null,
+          lastError: definite ? 'Telegram rejected approval notice' :
+            'Approval notice delivery outcome unknown' }
+      });
+    }
+  }
+  return sent;
+}
+
 function isOwner(bot: TelegramBotClient, userId: number | undefined, chatId: number | undefined): boolean {
   return userId !== undefined && chatId !== undefined &&
     String(userId) === bot.ownerUserId && String(chatId) === bot.ownerChatId;
@@ -242,6 +349,31 @@ export async function handleOwnerUpdate(
   const callback = update.callback_query;
   if (callback) {
     if (!isOwner(bot, callback.from.id, callback.message?.chat.id)) return;
+    const approvalMatch = APPROVAL_CALLBACK.exec(callback.data ?? '');
+    if (approvalMatch) {
+      // A forwarded/old button is not enough: it must belong to the stored
+      // notification with the same ID, original message and verified owner.
+      const notice = await prisma.workflowApprovalNotification.findUnique({
+        where: { approvalId: approvalMatch[1] }, include: { approval: true }
+      });
+      if (!notice || notice.state !== 'sent' ||
+          notice.messageId !== String(callback.message?.message_id) ||
+          notice.approval.ownerUserId !== bot.ownerUserId ||
+          notice.approval.ownerChatId !== bot.ownerChatId) {
+        await bot.acknowledge(callback.id, 'Неизвестное или неподтверждённое уведомление');
+        return;
+      }
+      try {
+        await decideWorkflowApproval(prisma, approvalMatch[1],
+          approvalMatch[2] === 'yes' ? 'approve' : 'deny',
+          { userId: bot.ownerUserId, chatId: bot.ownerChatId });
+        await bot.acknowledge(callback.id, 'Решение сохранено (только демо)');
+      } catch (error) {
+        if (!(error instanceof DemoError)) throw error;
+        await bot.acknowledge(callback.id, 'Не удалось: ' + error.code);
+      }
+      return;
+    }
     const match = ANSWER.exec(callback.data ?? '');
     if (!match) {
       await bot.acknowledge(callback.id, 'Неизвестная команда');
@@ -261,7 +393,7 @@ export async function handleOwnerUpdate(
   if (!message || !isOwner(bot, message.from?.id, message.chat.id)) return;
   const text = message.text?.trim() ?? '';
   if (/^\/start(?:\s|$)/.test(text) || /^\/help(?:\s|$)/.test(text)) {
-    await bot.sendText('Integron: /status; /answer <questionId> cheapest|fastest|defer; /reply <questionId> <текст>; /pause <workflowId>; /resume <workflowId>; /stop <taskId|workflowId>. Только тестовые задачи.');
+    await bot.sendText('Integron: /status; /answer <questionId> cheapest|fastest|defer; /reply <questionId> <текст>; /approve <approvalId>; /deny <approvalId>; /pause <workflowId>; /resume <workflowId>; /stop <workflowId>. Все подтверждения только для симуляции.');
     return;
   }
   if (/^\/status(?:\s|$)/.test(text)) {
@@ -278,7 +410,15 @@ export async function handleOwnerUpdate(
         ownerUserId: bot.ownerUserId, ownerChatId: bot.ownerChatId },
       orderBy: { createdAt: 'asc' }, take: 5
     });
+    const pendingApprovals = await prisma.workflowApproval.findMany({
+      where: { state: 'pending', expiresAt: { gt: new Date() },
+        ownerUserId: bot.ownerUserId, ownerChatId: bot.ownerChatId },
+      orderBy: { createdAt: 'asc' }, take: 5
+    });
     await bot.sendText([
+      pendingApprovals.length ? 'Тестовые согласования:\n' +
+        pendingApprovals.map(a => a.id + ' · ' + a.actionType + ' · ' + a.recipientRef).join('\n')
+        : 'Нет ожидающих согласований.',
       ownerQuestions.length ? 'Свободные вопросы:\n' +
         ownerQuestions.map(q => q.id + ' (поручение ' + q.workflowId.slice(0, 8) + ')').join('\n')
         : 'Нет новых свободных вопросов.',
@@ -322,6 +462,21 @@ export async function handleOwnerUpdate(
   // Only a verified owner and an exact question UUID or reply-to message may
   // resolve free-text questions. Never infer "last active question".
   const ownerIdentity: OwnerIdentity = { userId: bot.ownerUserId, chatId: bot.ownerChatId };
+  const approve = APPROVE_COMMAND.exec(text);
+  const deny = DENY_COMMAND.exec(text);
+  if (approve || deny) {
+    try {
+      const id = (approve ?? deny)![1];
+      await decideWorkflowApproval(prisma, id, approve ? 'approve' : 'deny',
+        ownerIdentity);
+      await bot.sendText('Решение сохранено для ' + id.slice(0, 8) +
+        ' (симуляция, без реального действия)');
+    } catch (error) {
+      if (!(error instanceof DemoError)) throw error;
+      await bot.sendText('Не удалось сохранить решение: ' + error.code);
+    }
+    return;
+  }
   const freeText = OWNER_REPLY.exec(text);
   if (freeText) {
     try {
