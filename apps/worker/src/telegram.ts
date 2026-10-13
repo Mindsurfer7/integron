@@ -3,6 +3,7 @@ import { PrismaDemoTaskService } from '../../../packages/storage/src/prisma.ts';
 import { TelegramBotClient, flushOwnerOutbox, flushWorkflowOwnerOutbox, flushWorkflowApprovalOutbox, pollOwnerUpdates } from '../../../packages/notifications/src/telegram.ts';
 
 import { expireWorkflowOwnerQuestions } from '../../../packages/storage/src/owner-questions.ts';
+import { expireWorkflowApprovals } from '../../../packages/storage/src/approvals.ts';
 
 // Telegram bot communicates ONLY with the verified owner. Mock and opt-in test workflows.
 // Single poller per database. Persistent cursor protects against duplicate callbacks.
