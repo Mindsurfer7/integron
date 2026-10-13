@@ -30,7 +30,8 @@ if (profile === 'postgres') {
   store = new PrismaDemoTaskService(client);
   const { DurableOrchestrator } = await import('../../../packages/storage/src/orchestrator.ts');
   workflows = new DurableOrchestrator(client, readTestTextPolicy(process.env),
-    readTdlibUserPolicy(process.env), undefined, readWhatsAppUserPolicy(process.env));
+    readTdlibUserPolicy(process.env), undefined, readWhatsAppUserPolicy(process.env),
+    readOwnerIdentity(process.env));
   disconnect = () => client.$disconnect();
 }
 
