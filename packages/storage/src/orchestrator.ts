@@ -7,6 +7,7 @@ import { MockResearchPlanner, questionsFromFields, validateProposal,
   type ResearchPlanner } from '../../llm/src/planner.ts';
 import { extractQuotedFacts } from '../../core/src/evidence.ts';
 import { answerWorkflowOwnerQuestion, expireWorkflowOwnerQuestions, type OwnerIdentity } from './owner-questions.ts';
+import { requestMockApproval, consumeMockApproval } from './approvals.ts';
 import { authorizeTestText, authorizeWhatsAppTestText, type TestTextPolicy } from '../../transports/src/contracts.ts';
 
 /**
@@ -93,7 +94,8 @@ export class DurableOrchestrator {
         costs: { orderBy: { createdAt: 'asc' } },
         targets: { orderBy: { createdAt: 'asc' } },
         conversations: { orderBy: { createdAt: 'asc' } },
-        ownerQuestions: { orderBy: { createdAt: 'asc' }, include: { notification: true } } }
+        ownerQuestions: { orderBy: { createdAt: 'asc' }, include: { notification: true } },
+        approvals: { orderBy: { createdAt: 'asc' }, include: { notification: true } } }
     });
   }
 
@@ -106,7 +108,8 @@ export class DurableOrchestrator {
         costs: { orderBy: { createdAt: 'asc' } },
         targets: { orderBy: { createdAt: 'asc' } },
         conversations: { orderBy: { createdAt: 'asc' } },
-        ownerQuestions: { orderBy: { createdAt: 'asc' }, include: { notification: true } } }
+        ownerQuestions: { orderBy: { createdAt: 'asc' }, include: { notification: true } },
+        approvals: { orderBy: { createdAt: 'asc' }, include: { notification: true } } }
     });
     if (!run) throw new DemoError(404, 'WORKFLOW_NOT_FOUND', 'Поручение не найдено');
     return run;
@@ -118,6 +121,32 @@ export class DurableOrchestrator {
     }
     return answerWorkflowOwnerQuestion(this.db, questionId, text, 'local_web',
       undefined, workflowId);
+  }
+
+  private async demoBookingIntent(id: string) {
+    const workflow = await this.get(id);
+    if (workflow.transport !== 'mock') {
+      throw new DemoError(403, 'APPROVAL_TARGET_FORBIDDEN', 'Только демонстрационные поручения');
+    }
+    const target = workflow.targets.find(t => t.origin === 'mock_fixture');
+    if (!target) throw new DemoError(409, 'APPROVAL_TARGET_MISSING', 'Нет демо-организации');
+    return {
+      actionType: 'booking' as const, recipientRef: target.sourceKey,
+      summary: 'Демонстрационная запись в вымышленную организацию'
+    };
+  }
+
+  /** Can only request a synthetic no-I/O approval for a mock fixture. */
+  async requestDemoApproval(workflowId: string) {
+    const intent = await this.demoBookingIntent(workflowId);
+    return requestMockApproval(this.db, workflowId,
+      'demo-booking:' + intent.recipientRef, intent, this.owner);
+  }
+
+  /** Record the one-time simulated action, never invoke an external provider. */
+  async consumeDemoApproval(workflowId: string, approvalId: string) {
+    const intent = await this.demoBookingIntent(workflowId);
+    return consumeMockApproval(this.db, workflowId, approvalId, intent);
   }
 
   /** Safe on both queued jobs and questions already sent to Telegram. */
@@ -155,6 +184,14 @@ export class DurableOrchestrator {
         });
         await tx.workflowOwnerNotification.updateMany({
           where: { question: { workflowId: id }, state: 'queued' },
+          data: { state: 'cancelled' }
+        });
+        await tx.workflowApproval.updateMany({
+          where: { workflowId: id, state: { in: ['pending', 'approved'] } },
+          data: { state: 'cancelled' }
+        });
+        await tx.workflowApprovalNotification.updateMany({
+          where: { approval: { workflowId: id }, state: 'queued' },
           data: { state: 'cancelled' }
         });
         await tx.workflowEvent.create({
