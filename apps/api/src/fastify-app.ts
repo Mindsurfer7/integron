@@ -19,6 +19,8 @@ export interface WorkflowApi {
   pause(id: string): Promise<unknown>;
   resume(id: string): Promise<unknown>;
   answerOwnerText(workflowId: string, questionId: string, text: unknown): Promise<unknown>;
+  requestDemoApproval(workflowId: string): Promise<unknown>;
+  consumeDemoApproval(workflowId: string, approvalId: string): Promise<unknown>;
 }
 
 export function buildFastifyApp(
