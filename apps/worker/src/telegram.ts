@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaDemoTaskService } from '../../../packages/storage/src/prisma.ts';
-import { TelegramBotClient, flushOwnerOutbox, flushWorkflowOwnerOutbox, pollOwnerUpdates } from '../../../packages/notifications/src/telegram.ts';
+import { TelegramBotClient, flushOwnerOutbox, flushWorkflowOwnerOutbox, flushWorkflowApprovalOutbox, pollOwnerUpdates } from '../../../packages/notifications/src/telegram.ts';
 
 import { expireWorkflowOwnerQuestions } from '../../../packages/storage/src/owner-questions.ts';
 
