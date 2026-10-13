@@ -29,6 +29,7 @@ try {
     try {
       await tasks.expirePending();
       await expireWorkflowOwnerQuestions(prisma);
+      await expireWorkflowApprovals(prisma);
       // Inbound first: pressing a button while queued cancels the notification.
       await pollOwnerUpdates(prisma, bot);
       if (stopping) break;
