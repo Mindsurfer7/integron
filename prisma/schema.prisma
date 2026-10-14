@@ -65,6 +65,7 @@ model WorkflowRun {
   facts           WorkflowFact[]
   costs           WorkflowCostEntry[]
   costReservations WorkflowCostReservation[]
+  sipCalls         WorkflowSipCall[]
   targets         WorkflowTarget[]
   conversations   WorkflowConversation[]
   ownerQuestions   WorkflowOwnerQuestion[]
@@ -307,4 +308,23 @@ model WorkflowCostReservation {
   settledAt         DateTime?
   @@unique([workflowId, eventKey])
   @@index([workflowId, state])
+}
+
+// P3.1 manual/test-only call dispatch record. No auto retries after attempting.
+// Storing recipient here is confined to local PostgreSQL, never source control.
+model WorkflowSipCall {
+  id                  String      @id @default(uuid()) @db.Uuid
+  workflowId          String      @db.Uuid
+  workflow            WorkflowRun @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  actionKey           String
+  number              String
+  budgetReservationKey String
+  state               String      @default("prepared")
+  roomName            String?
+  participantIdentity String?
+  providerCallId      String?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  @@unique([workflowId, actionKey])
+  @@index([state, createdAt])
 }
