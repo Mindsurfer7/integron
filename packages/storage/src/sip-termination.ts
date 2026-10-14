@@ -1,6 +1,6 @@
 import { type Prisma, type PrismaClient } from '@prisma/client';
 import { DemoError } from '../../core/src/demo.ts';
-import { sipRoomIdentity } from '../../voice/src/livekit-sip.ts';
+import { sipRoomIdentity, type CloudSipPolicy } from '../../voice/src/livekit-sip.ts';
 
 export type SipStopReason = 'workflow_stopped' | 'deadline_exceeded' | 'operator_stop';
 type DbTx = Prisma.TransactionClient;
@@ -102,10 +102,11 @@ export interface SipRoomTerminationClient {
  * accepted, not a verified BYE, disconnected participant or settled invoice.
  * Every network failure is UNKNOWN and never automatically retried.
  */
-export async function processOneSipTermination(db: PrismaClient, client: SipRoomTerminationClient) {
+export async function processOneSipTermination(db: PrismaClient, policy: CloudSipPolicy, client: SipRoomTerminationClient) {
+  if (!policy.enabled || policy.allowedNumbers.size < 1) throw new Error('CLOUD_SIP_DISABLED');
   const candidates = await db.workflowSipCall.findMany({
     where: { terminationState: 'pending', stopRequestedAt: { not: null },
-      state: { in: [...dispatchStates] } },
+      number: { in: [...policy.allowedNumbers] }, state: { in: [...dispatchStates] } },
     orderBy: [{ stopRequestedAt: 'asc' }, { createdAt: 'asc' }], take: 20
   });
   for (const candidate of candidates) {
