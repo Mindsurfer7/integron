@@ -26,7 +26,8 @@
     "dev:agent-tdlib": "RUNTIME_PROFILE=postgres OUTBOUND_ENABLED=false node --experimental-strip-types apps/worker/src/agent-tdlib.ts",
     "test:whatsapp:unit": "node --experimental-strip-types --test tests/whatsapp-user.test.ts",
     "dev:agent-whatsapp": "RUNTIME_PROFILE=postgres OUTBOUND_ENABLED=false node --experimental-strip-types apps/worker/src/agent-whatsapp.ts --connect-real-whatsapp",
-    "preflight:whatsapp": "node scripts/local-preflight.mjs whatsapp"
+    "preflight:whatsapp": "node scripts/local-preflight.mjs whatsapp",
+    "dev:sip-guardian": "node --experimental-strip-types apps/worker/src/sip-guardian.ts"
   },
   "dependencies": {
     "@prisma/client": "6.19.0",
