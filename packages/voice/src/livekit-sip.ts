@@ -38,7 +38,7 @@ export type SipDispatchOutcome = {
 export function readCloudSipPolicy(env: Record<string, string | undefined>): CloudSipPolicy {
   const enabled = env.TEST_CLOUD_SIP_ENABLED === 'true';
   if (!enabled) return { enabled: false, trunkId: '', allowedNumbers: new Set() };
-  if (env.RUNTIME_PROFILE !== 'postgres' || env.OUTBOUND_ENABLED !== 'false') {
+  if (env.RUNTIME_PROFILE !== 'postgres' || env.OUTBOUND_ENABLED !== 'true') {
     throw new Error('CLOUD_SIP_REQUIRES_POSTGRES_OUTBOUND_DISABLED');
   }
   const trunkId = env.LIVEKIT_SIP_OUTBOUND_TRUNK_ID ?? '';
