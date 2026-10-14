@@ -66,7 +66,7 @@ export function durableSipDispatchGuards(db: PrismaClient): DialGuards {
       return (await db.workflowSipCall.updateMany({
         where: { workflowId: intent.workflowId, actionKey: intent.actionKey,
           number: intent.number, budgetReservationKey: intent.budgetReservationKey,
-          state: 'prepared', workflow: { state: { notIn: ['paused', 'cancelled', 'completed', 'failed'] } } },
+          state: 'prepared', workflow: { is: { state: { notIn: ['paused', 'cancelled', 'completed', 'failed'] } } } },
         data: { state: 'attempting' }
       })).count === 1;
     }
