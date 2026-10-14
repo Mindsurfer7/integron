@@ -5,6 +5,7 @@ import { SqliteDemoTaskRepository } from '../../../packages/storage/src/sqlite.t
 import { buildFastifyApp, type TaskService, type WorkflowApi } from './fastify-app.ts';
 import { readTestTextPolicy, readTdlibUserPolicy, readWhatsAppUserPolicy } from '../../../packages/transports/src/contracts.ts';
 import { readOwnerIdentity } from '../../../packages/storage/src/owner-questions.ts';
+import { createOwnerAuth } from './api-auth.ts';
 
 const profile = process.env.RUNTIME_PROFILE ?? 'demo';
 if (profile !== 'demo' && profile !== 'local' && profile !== 'postgres') {
@@ -15,6 +16,10 @@ if (process.env.OUTBOUND_ENABLED !== undefined && process.env.OUTBOUND_ENABLED !
 }
 const port = Number(process.env.PORT ?? '4317');
 if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('Invalid PORT');
+// PostgreSQL API must fail closed unless the owner secret is configured.
+const auth = profile === 'postgres'
+  ? createOwnerAuth(process.env.INTEGRON_API_TOKEN ?? '', process.env.INTEGRON_COOKIE_SECURE === 'true')
+  : undefined;
 const sqlite = profile === 'local'
   ? new SqliteDemoTaskRepository(process.env.SQLITE_PATH ?? join(homedir(), '.integron', 'tasks.sqlite'))
   : undefined;
@@ -35,7 +40,7 @@ if (profile === 'postgres') {
   disconnect = () => client.$disconnect();
 }
 
-const app = buildFastifyApp(store, profile, workflows);
+const app = buildFastifyApp(store, profile, workflows, auth);
 async function shutdown() {
   await app.close();
   sqlite?.close();

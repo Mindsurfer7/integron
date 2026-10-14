@@ -93,3 +93,8 @@ setting `TEST_WHATSAPP_USER_ENABLED=true`, `WHATSAPP_LIVE_CONNECT_ENABLED=true`,
 `WHATSAPP_AGENT_JID` and `WHATSAPP_ALLOWED_JIDS` on your computer can
 `pnpm dev:agent-whatsapp` initiate QR/pairing. Never supply QR/session secrets in
 GitHub. See [P2.3 instructions](docs/P2-3-WHATSAPP-SPIKE.md).
+
+
+## P1 — Авторизация владельца PostgreSQL API
+
+PostgreSQL Fastify требует случайный `INTEGRON_API_TOKEN` длиной от 32 символов. На localhost доступен вход `/login`, CLI использует `Authorization: Bearer …`. Демо RAM/SQLite остаётся доступным без пароля на localhost. **Публичный HTTPS-доступ не разрешён**: см. [P1-API-OWNER-AUTH](docs/P1-API-OWNER-AUTH.md).

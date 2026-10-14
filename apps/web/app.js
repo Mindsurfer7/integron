@@ -18,7 +18,8 @@ const element = (tag, content, className) => {
 async function request(path, method = 'GET', data) {
   const response = await fetch(path, {
     method,
-    headers: data ? { 'Content-Type': 'application/json' } : {},
+    headers: { ...(data ? { 'Content-Type': 'application/json' } : {}),
+      ...(method === 'GET' ? {} : { 'X-Integron-CSRF': '1' }) },
     body: data ? JSON.stringify(data) : undefined
   });
   const payload = await response.json();
