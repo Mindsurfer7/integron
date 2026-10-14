@@ -64,12 +64,14 @@ model WorkflowRun {
   messages        TextMessage[]
   facts           WorkflowFact[]
   costs           WorkflowCostEntry[]
+  costReservations WorkflowCostReservation[]
   targets         WorkflowTarget[]
   conversations   WorkflowConversation[]
   ownerQuestions   WorkflowOwnerQuestion[]
   approvals        WorkflowApproval[]
   maxCostCents    Int             @default(500)
   spentCents      Int             @default(0)
+  reservedCents   Int             @default(0)
   demoTaskId      String?         @db.Uuid
   state           String          @default("queued")
   pausedFrom      String?
@@ -288,4 +290,21 @@ model WorkflowApprovalNotification {
   updatedAt      DateTime         @updatedAt
   @@index([state, createdAt])
   @@index([messageId])
+}
+
+// Preflight authorization of bounded future provider usage. Reservations
+// aren't invoices. UNKNOWN external side effects remain reserved until verified.
+model WorkflowCostReservation {
+  id                String      @id @default(uuid()) @db.Uuid
+  workflowId        String      @db.Uuid
+  workflow          WorkflowRun @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  eventKey          String
+  category          String
+  maxAmountCents    Int
+  actualAmountCents Int?
+  state             String      @default("reserved")
+  createdAt         DateTime    @default(now())
+  settledAt         DateTime?
+  @@unique([workflowId, eventKey])
+  @@index([workflowId, state])
 }
