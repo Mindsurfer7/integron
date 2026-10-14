@@ -27,20 +27,17 @@ export async function recordWorkflowCost(db: PrismaClient, cost: RecordedCost) {
   try {
     return await db.$transaction(async tx => {
       const run = await tx.workflowRun.findUnique({
-        where: { id: cost.workflowId },
-        select: { maxCostCents: true }
+        where: { id: cost.workflowId }, select: { id: true }
       });
       if (!run) throw new DemoError(404, 'WORKFLOW_NOT_FOUND', 'Поручение не найдено');
       // Reserve the event key transactionally: a duplicate never charges twice.
       const entry = await tx.workflowCostEntry.create({ data: cost });
-      const updated = await tx.workflowRun.updateMany({
-        where: {
-          id: cost.workflowId,
-          spentCents: { lte: run.maxCostCents - cost.amountCents }
-        },
-        data: { spentCents: { increment: cost.amountCents } }
-      });
-      if (updated.count !== 1) {
+      const updated = await tx.$executeRaw`
+        UPDATE "WorkflowRun" SET "spentCents" = "spentCents" + ${cost.amountCents}
+        WHERE "id" = ${cost.workflowId}::uuid
+          AND "spentCents" + "reservedCents" + ${cost.amountCents} <= "maxCostCents"
+      `;
+      if (updated !== 1) {
         throw new DemoError(409, 'BUDGET_EXCEEDED',
           'Лимит расходов поручения превышен; новые платные действия запрещены');
       }
