@@ -320,6 +320,11 @@ model WorkflowSipCall {
   number              String
   budgetReservationKey String
   state               String      @default("prepared")
+  deadlineAt          DateTime?
+  stopRequestedAt     DateTime?
+  stopReason          String?
+  terminationState    String      @default("none")
+  terminationAt       DateTime?
   roomName            String?
   participantIdentity String?
   providerCallId      String?
