@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import { readFile } from 'node:fs/promises';
 import { DemoError, type DemoTask } from '../../../packages/core/src/demo.ts';
 import { TextPolicyError } from '../../../packages/transports/src/contracts.ts';
+import { type OwnerAuth } from './api-auth.ts';
 
 export interface TaskService {
   list(): DemoTask[] | Promise<DemoTask[]>;
@@ -24,11 +25,12 @@ export interface WorkflowApi {
 }
 
 export function buildFastifyApp(
-  store: TaskService, profile: 'demo' | 'local' | 'postgres', workflows?: WorkflowApi
+  store: TaskService, profile: 'demo' | 'local' | 'postgres', workflows?: WorkflowApi,
+  auth?: OwnerAuth
 ) {
   const app = Fastify({ logger: false, bodyLimit: 8_192, trustProxy: false });
 
-  // No authentication exists yet. Bind to loopback and reject hostile Host/Origin.
+  // Loopback and same-origin guards remain mandatory even with owner authentication.
   app.addHook('onRequest', async (request, reply) => {
     const host = request.headers.host ?? '';
     if (!/^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host)) {
@@ -40,12 +42,24 @@ export function buildFastifyApp(
         return reply.code(403).send({ error: 'INVALID_ORIGIN', message: 'Внешние запросы запрещены' });
       }
     }
+    if (auth && (request.url.startsWith('/api/') || request.url === '/auth/logout')) {
+      const grant = auth.authorize(request.headers);
+      if (!grant.allowed) {
+        return reply.code(401).send({ error: 'UNAUTHORIZED', message: 'Требуется вход владельца' });
+      }
+      // SameSite cookies + custom header prevent form-based CSRF.
+      // Bearer clients do not rely on ambient browser credentials.
+      if (!grant.bearer && request.method !== 'GET' && request.method !== 'HEAD' &&
+          request.headers['x-integron-csrf'] !== '1') {
+        return reply.code(403).send({ error: 'CSRF_REQUIRED', message: 'Отсутствует защитный заголовок' });
+      }
+    }
   });
   app.addHook('onSend', async (request, reply, payload) => {
     reply.header('Cache-Control', 'no-store');
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Content-Security-Policy',
-      request.url === '/' || request.url === '/app.js'
+      ['/', '/app.js', '/login', '/login.js', '/login.css'].includes(request.url)
         ? "default-src 'self'; script-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; form-action 'self'"
         : "default-src 'none'");
     return payload;
@@ -62,11 +76,42 @@ export function buildFastifyApp(
       message: status === 500 ? 'Внутренняя ошибка' : 'Некорректный запрос'
     });
   });
-  app.get('/', async (_request, reply) => {
+  app.get('/login', async (_request, reply) => {
+    if (!auth) return reply.redirect('/');
+    reply.type('text/html; charset=utf-8');
+    return readFile(new URL('../../web/login.html', import.meta.url), 'utf8');
+  });
+  app.get('/login.js', async (_request, reply) => {
+    if (!auth) return reply.code(404).send({ error: 'NOT_FOUND' });
+    reply.type('application/javascript; charset=utf-8');
+    return readFile(new URL('../../web/login.js', import.meta.url), 'utf8');
+  });
+  app.get('/login.css', async (_request, reply) => {
+    if (!auth) return reply.code(404).send({ error: 'NOT_FOUND' });
+    reply.type('text/css; charset=utf-8');
+    return readFile(new URL('../../web/login.css', import.meta.url), 'utf8');
+  });
+  app.post<{ Body: { token?: unknown } }>('/auth/login', async (request, reply) => {
+    if (!auth) return reply.code(404).send({ error: 'NOT_FOUND' });
+    const result = auth.login(request.body?.token, request.ip);
+    if (!result.ok) return reply.code(result.status).send({
+      error: result.status === 429 ? 'RATE_LIMITED' : 'UNAUTHORIZED'
+    });
+    reply.header('Set-Cookie', result.cookie);
+    return { ok: true };
+  });
+  app.post('/auth/logout', async (request, reply) => {
+    if (!auth) return reply.code(404).send({ error: 'NOT_FOUND' });
+    reply.header('Set-Cookie', auth.logout(request.headers.cookie));
+    return { ok: true };
+  });
+  app.get('/', async (request, reply) => {
+    if (auth && !auth.authorize(request.headers).allowed) return reply.redirect('/login');
     reply.type('text/html; charset=utf-8');
     return readFile(new URL('../../web/index.html', import.meta.url), 'utf8');
   });
-  app.get('/app.js', async (_request, reply) => {
+  app.get('/app.js', async (request, reply) => {
+    if (auth && !auth.authorize(request.headers).allowed) return reply.code(401).send({ error: 'UNAUTHORIZED' });
     reply.type('application/javascript; charset=utf-8');
     return readFile(new URL('../../web/app.js', import.meta.url), 'utf8');
   });
