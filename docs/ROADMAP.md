@@ -267,3 +267,11 @@ See [P1-BUDGET-RESERVATIONS.md](P1-BUDGET-RESERVATIONS.md).
 - [ ] Real consented test account + number, LiveKit SIP provider E2E and voice agent integration.
 
 See [P3-CLOUD-SIP.md](P3-CLOUD-SIP.md). **No live dialing is enabled**.
+
+## P3.1 durable SIP action outbox — 2026-10-14
+
+- [x] `WorkflowSipCall` status machine, immutable one-shot claim, P1 budget reserve preflight and provider UNKNOWN preservation.
+- [x] Credential-free provider mock + PostgreSQL restart/duplicate dispatch regression tests.
+- [ ] Isolated voice worker and provider reconciliation, hangup/timer, actual audio/HITL and consented number E2E.
+
+See [P3-SIP-DURABLE-OUTBOX.md](P3-SIP-DURABLE-OUTBOX.md).
