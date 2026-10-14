@@ -1,10 +1,10 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { DemoError } from '../../core/src/demo.ts';
 import { reserveWorkflowSpend } from './budget-reservations.ts';
-import { dispatchConsentedSipTestCall, type CloudSipPolicy, type SipClientLike,
+import { sipRoomIdentity, dispatchConsentedSipTestCall, type CloudSipPolicy, type SipClientLike,
   type SipDialIntent, type SipDispatchOutcome, type DialGuards } from '../../voice/src/livekit-sip.ts';
 
-export type PreparedSipIntent = SipDialIntent & { maxAmountCents: number };
+export type PreparedSipIntent = SipDialIntent & { maxAmountCents: number; maxDurationSeconds?: number };
 function checkPolicy(policy: CloudSipPolicy, intent: SipDialIntent) {
   if (!policy.enabled || !/^[0-9a-f-]{36}$/.test(intent.workflowId) ||
       !/^[a-zA-Z0-9_.:-]{4,80}$/.test(intent.actionKey) ||
@@ -22,13 +22,20 @@ function checkPolicy(policy: CloudSipPolicy, intent: SipDialIntent) {
 export async function prepareConsentedSipCall(db: PrismaClient, policy: CloudSipPolicy,
   intent: PreparedSipIntent) {
   checkPolicy(policy, intent);
+  const duration = intent.maxDurationSeconds ?? 180;
+  if (!Number.isSafeInteger(duration) || duration < 15 || duration > 300) {
+    throw new DemoError(400, 'INVALID_SIP_DURATION', 'Недопустимый лимит длительности звонка');
+  }
+  const identities = sipRoomIdentity(intent.workflowId, intent.actionKey);
   await reserveWorkflowSpend(db, { workflowId: intent.workflowId,
     eventKey: intent.budgetReservationKey, category: 'telephony',
     maxAmountCents: intent.maxAmountCents });
   try {
     return await db.workflowSipCall.create({
       data: { workflowId: intent.workflowId, actionKey: intent.actionKey,
-        number: intent.number, budgetReservationKey: intent.budgetReservationKey }
+        number: intent.number, budgetReservationKey: intent.budgetReservationKey,
+        deadlineAt: new Date(Date.now() + duration * 1000),
+        roomName: identities.roomName, participantIdentity: identities.participantIdentity }
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -50,7 +57,9 @@ export function durableSipDispatchGuards(db: PrismaClient): DialGuards {
         where: { workflowId_actionKey: { workflowId: intent.workflowId, actionKey: intent.actionKey } },
         include: { workflow: { select: { state: true } } }
       });
-      if (!record || record.state !== 'prepared' || record.number !== intent.number ||
+      if (!record || record.state !== 'prepared' || !!record.stopRequestedAt ||
+          (record.deadlineAt !== null && record.deadlineAt <= new Date()) ||
+          record.number !== intent.number ||
           record.budgetReservationKey !== intent.budgetReservationKey ||
           ['paused', 'cancelled', 'completed', 'failed'].includes(record.workflow.state)) return false;
       const reservation = await db.workflowCostReservation.findUnique({
@@ -66,7 +75,9 @@ export function durableSipDispatchGuards(db: PrismaClient): DialGuards {
       return (await db.workflowSipCall.updateMany({
         where: { workflowId: intent.workflowId, actionKey: intent.actionKey,
           number: intent.number, budgetReservationKey: intent.budgetReservationKey,
-          state: 'prepared', workflow: { is: { state: { notIn: ['paused', 'cancelled', 'completed', 'failed'] } } } },
+          state: 'prepared', stopRequestedAt: null,
+          OR: [{ deadlineAt: null }, { deadlineAt: { gt: new Date() } }],
+          workflow: { is: { state: { notIn: ['paused', 'cancelled', 'completed', 'failed'] } } } },
         data: { state: 'attempting' }
       })).count === 1;
     }
