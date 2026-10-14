@@ -259,3 +259,11 @@ criteria are met.
 - [ ] Telephony workers must integrate a durable dispatch outbox before connecting live PSTN; never automatically retry unknown calls.
 
 See [P1-BUDGET-RESERVATIONS.md](P1-BUDGET-RESERVATIONS.md).
+
+## P3.1 cloud SIP adapter — 2026-10-14
+
+- [x] Experimental LiveKit Cloud SIP outbound adapter + strict private test allowlist, request identity, provider no-blind-retry semantics and offline tests.
+- [ ] Durable call dispatch/outbox + budget preflight wiring, dial/HITL audio loop, call timeout/recovery, provider callback verification and billing.
+- [ ] Real consented test account + number, LiveKit SIP provider E2E and voice agent integration.
+
+See [P3-CLOUD-SIP.md](P3-CLOUD-SIP.md). **No live dialing is enabled**.

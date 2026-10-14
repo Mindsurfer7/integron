@@ -15,7 +15,7 @@
     "dev:postgres": "RUNTIME_PROFILE=postgres OUTBOUND_ENABLED=false node --experimental-strip-types --experimental-sqlite apps/api/src/fastify-server.ts",
     "db:generate": "prisma generate",
     "db:deploy": "prisma migrate deploy",
-    "test": "node --experimental-strip-types --experimental-sqlite --test tests/demo.test.ts tests/persistence.test.ts tests/http.test.ts tests/fastify.test.ts tests/tdlib-unit.test.ts tests/planner-evidence.test.ts tests/whatsapp-user.test.ts tests/owner-api-auth.test.ts",
+    "test": "node --experimental-strip-types --experimental-sqlite --test tests/demo.test.ts tests/persistence.test.ts tests/http.test.ts tests/fastify.test.ts tests/tdlib-unit.test.ts tests/planner-evidence.test.ts tests/whatsapp-user.test.ts tests/owner-api-auth.test.ts tests/livekit-sip.test.ts",
     "test:tdlib:unit": "node --experimental-strip-types --test tests/tdlib-unit.test.ts",
     "preflight:local": "node scripts/local-preflight.mjs local",
     "preflight:tdlib": "node scripts/local-preflight.mjs tdlib",
@@ -39,6 +39,7 @@
     "tdl": "8.1.0",
     "prebuilt-tdlib": "0.1008065.0",
     "@whiskeysockets/baileys": "6.7.22",
-    "qrcode-terminal": "0.12.0"
+    "qrcode-terminal": "0.12.0",
+    "livekit-server-sdk": "2.19.1"
   }
 }
