@@ -332,4 +332,5 @@ model WorkflowSipCall {
   updatedAt           DateTime    @updatedAt
   @@unique([workflowId, actionKey])
   @@index([state, createdAt])
+  @@index([deadlineAt, stopRequestedAt])
 }
