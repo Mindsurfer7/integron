@@ -8,6 +8,7 @@ import { MockResearchPlanner, questionsFromFields, validateProposal,
 import { extractQuotedFacts } from '../../core/src/evidence.ts';
 import { answerWorkflowOwnerQuestion, expireWorkflowOwnerQuestions, type OwnerIdentity } from './owner-questions.ts';
 import { requestMockApproval, consumeMockApproval } from './approvals.ts';
+import { requestWorkflowSipStops } from './sip-termination.ts';
 import { authorizeTestText, authorizeWhatsAppTestText, type TestTextPolicy } from '../../transports/src/contracts.ts';
 
 /**
@@ -152,7 +153,10 @@ export class DurableOrchestrator {
   /** Safe on both queued jobs and questions already sent to Telegram. */
   async stop(id: string) {
     const run = await this.get(id);
-    if (TERMINAL.includes(run.state)) return run;
+    if (TERMINAL.includes(run.state)) {
+      await this.db.$transaction(tx => requestWorkflowSipStops(tx, id));
+      return this.get(id);
+    }
     const tasks = new PrismaDemoTaskService(this.db);
     let completed = false;
     try {
@@ -175,6 +179,7 @@ export class DurableOrchestrator {
         data: { state, pausedFrom: null, step: 'done', leaseToken: null, leasedUntil: null, finishedAt: new Date() }
       });
       if (changed.count) {
+        await requestWorkflowSipStops(tx, id, 'workflow_stopped');
         await tx.workflowConversation.updateMany({
           where: { workflowId: id, state: { not: 'mock_simulation' } },
           data: { state: completed ? 'completed' : 'cancelled' }
@@ -232,9 +237,11 @@ export class DurableOrchestrator {
           data: { state: 'paused', pausedFrom: run.state,
             leaseToken: null, leasedUntil: null }
         });
-        if (result.count) await tx.workflowEvent.create({
-          data: { workflowId: id, kind: 'paused' }
-        });
+        if (result.count) {
+          // Pausing a workflow cannot leave a paid live call ringing.
+          await requestWorkflowSipStops(tx, id, 'operator_stop');
+          await tx.workflowEvent.create({ data: { workflowId: id, kind: 'paused' } });
+        }
         return result.count;
       });
       if (changed) return this.get(id);

@@ -275,3 +275,12 @@ See [P3-CLOUD-SIP.md](P3-CLOUD-SIP.md). **No live dialing is enabled**.
 - [ ] Isolated voice worker and provider reconciliation, hangup/timer, actual audio/HITL and consented number E2E.
 
 See [P3-SIP-DURABLE-OUTBOX.md](P3-SIP-DURABLE-OUTBOX.md).
+
+## P3.1 SIP termination and timeout watchdog — 2026-10-15
+
+- [x] Durable bounded timeout, stop/pause propagation, cancellation of never-dispatched calls and atomic release of those unused reserves.
+- [x] One-shot Hangup/room-deletion outbox for already-claimed SIP calls; ambiguous outcomes are not blindly retried and never release budget.
+- [x] Credential-free PostgreSQL tests covering late send responses, stop, pause, expiry and network loss.
+- [ ] Signed/provider-authorized disconnect confirmations, active-call billing, receipt reconciliation, emergency operator alerting and live two-way SIP/AI E2E.
+
+See [P3-SIP-TERMINATION-WATCHDOG.md](P3-SIP-TERMINATION-WATCHDOG.md). **Phone calling is still not production enabled.**

@@ -39,7 +39,7 @@ export function readCloudSipPolicy(env: Record<string, string | undefined>): Clo
   const enabled = env.TEST_CLOUD_SIP_ENABLED === 'true';
   if (!enabled) return { enabled: false, trunkId: '', allowedNumbers: new Set() };
   if (env.RUNTIME_PROFILE !== 'postgres' || env.OUTBOUND_ENABLED !== 'true') {
-    throw new Error('CLOUD_SIP_REQUIRES_POSTGRES_OUTBOUND_DISABLED');
+    throw new Error('CLOUD_SIP_REQUIRES_POSTGRES_AND_EXPLICIT_OUTBOUND');
   }
   const trunkId = env.LIVEKIT_SIP_OUTBOUND_TRUNK_ID ?? '';
   if (!/^[A-Za-z0-9_-]{6,120}$/.test(trunkId)) throw new Error('INVALID_SIP_TRUNK');
@@ -52,8 +52,9 @@ export function readCloudSipPolicy(env: Record<string, string | undefined>): Clo
   return { enabled: true, trunkId, allowedNumbers: new Set(numbers) };
 }
 
-function suffix(workflowId: string, actionKey: string): string {
-  return createHash('sha256').update(workflowId + ':' + actionKey).digest('hex').slice(0, 20);
+export function sipRoomIdentity(workflowId: string, actionKey: string) {
+  const suffix = createHash('sha256').update(workflowId + ':' + actionKey).digest('hex').slice(0, 20);
+  return { roomName: 'integron-test-' + suffix, participantIdentity: 'integron-sip-' + suffix };
 }
 /** A captured temporary network error is ambiguous: caller MUST NOT retry. */
 export async function dispatchConsentedSipTestCall(
@@ -69,9 +70,7 @@ export async function dispatchConsentedSipTestCall(
   }
   if (!await guards.reservationReady(intent)) throw new Error('CLOUD_SIP_UNRESERVED');
   if (!await guards.claimOnce(intent)) throw new Error('CLOUD_SIP_ALREADY_CLAIMED');
-  const id = suffix(intent.workflowId, intent.actionKey);
-  const roomName = 'integron-test-' + id;
-  const participantIdentity = 'integron-sip-' + id;
+  const { roomName, participantIdentity } = sipRoomIdentity(intent.workflowId, intent.actionKey);
   try {
     const response = await client.createSipParticipant(policy.trunkId, intent.number, roomName, {
       participantIdentity, participantName: 'Integron Test', waitUntilAnswered: false
