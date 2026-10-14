@@ -64,7 +64,7 @@ test('SIP dispatch never retries ambiguous sends or skips budget preflight', asy
 
 test('SIP preflight fails closed on unsafe runtime and non-E164 allowlist', () => {
   assert.throws(() => readCloudSipPolicy({ ...env, RUNTIME_PROFILE: 'demo' }), /REQUIRES_POSTGRES/);
-  assert.throws(() => readCloudSipPolicy({ ...env, OUTBOUND_ENABLED: 'true' }), /REQUIRES_POSTGRES/);
+  assert.throws(() => readCloudSipPolicy({ ...env, OUTBOUND_ENABLED: 'false' }), /REQUIRES_POSTGRES/);
   assert.throws(() => readCloudSipPolicy({ ...env, CLOUD_SIP_ALLOWED_TEST_NUMBERS: '123' }), /INVALID_SIP_ALLOWLIST/);
   assert.throws(() => readCloudSipPolicy({ ...env, CLOUD_SIP_ALLOWED_TEST_NUMBERS: number + ',' + number }), /INVALID_SIP_ALLOWLIST/);
 });
