@@ -6,7 +6,7 @@ import { readCloudSipPolicy, dispatchConsentedSipTestCall, type SipClientLike } 
 const workflowId = '11111111-1111-4111-a111-111111111111';
 const number = '+12125550123';
 const env = { TEST_CLOUD_SIP_ENABLED: 'true', RUNTIME_PROFILE: 'postgres',
-  OUTBOUND_ENABLED: 'false', LIVEKIT_SIP_OUTBOUND_TRUNK_ID: 'ST_testonly12345',
+  OUTBOUND_ENABLED: 'true', LIVEKIT_SIP_OUTBOUND_TRUNK_ID: 'ST_testonly12345',
   CLOUD_SIP_ALLOWED_TEST_NUMBERS: number };
 
 test('SIP cloud adapter is opt-in and allows only consented numbers', async () => {
