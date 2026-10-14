@@ -250,3 +250,12 @@ See [P1-APPROVAL-ENGINE.md](P1-APPROVAL-ENGINE.md). This is an
 
 Existing P1.1/P1.4 checkboxes remain open until the full acceptance
 criteria are met.
+
+## P1 preflight budget reservations — 2026-10-14
+
+- [x] Durable per-workflow provider-charge reserves, conditional atomic budget, settle, release and event audit.
+- [x] Existing legacy charge recorder respects outstanding reserves; status is surfaced in UI.
+- [ ] Real provider usage/receipts, cross-workflow and day-level caps, channel rate limits, overrun incident policy.
+- [ ] Telephony workers must integrate a durable dispatch outbox before connecting live PSTN; never automatically retry unknown calls.
+
+See [P1-BUDGET-RESERVATIONS.md](P1-BUDGET-RESERVATIONS.md).
