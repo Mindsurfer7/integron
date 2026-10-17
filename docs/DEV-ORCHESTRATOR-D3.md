@@ -1,6 +1,6 @@
 # D3 — Local MCP for Development Orchestrator
 
-**Status:** implemented in a PR targeting dev; remote ChatGPT connection and OAuth deployment not yet accepted.
+**Status:** merged to `dev` via PR #23; remote ChatGPT connection and OAuth deployment not accepted.
 
 ## What is delivered
 

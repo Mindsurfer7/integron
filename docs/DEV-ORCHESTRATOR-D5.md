@@ -1,6 +1,6 @@
 # D5 — ManagedAgentRunner: OpenCode adapter (independent D5a slice)
 
-**Status:** isolated implementation in a feature branch targeting `dev`. D5 full acceptance remains **open**: authenticated launch/lease persistence, branch/PR evidence, cost gates and crash reconciliation require D5b after D3 is accepted.
+**Status:** D5a merged to `dev` via PR #24; D5b durable execution in PR #25. D5 full acceptance remains **open**: authenticated launch/lease persistence, branch/PR evidence, cost gates and crash reconciliation require D5b after D3 is accepted.
 
 ## Implemented
 

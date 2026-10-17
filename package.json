@@ -15,11 +15,11 @@
     "dev:postgres": "RUNTIME_PROFILE=postgres OUTBOUND_ENABLED=false node --experimental-strip-types --experimental-sqlite apps/api/src/fastify-server.ts",
     "db:generate": "prisma generate",
     "db:deploy": "prisma migrate deploy",
-    "test": "node --experimental-strip-types --experimental-sqlite --test tests/demo.test.ts tests/persistence.test.ts tests/http.test.ts tests/fastify.test.ts tests/tdlib-unit.test.ts tests/planner-evidence.test.ts tests/whatsapp-user.test.ts tests/owner-api-auth.test.ts tests/livekit-sip.test.ts tests/dev-observer.test.ts tests/dev-planner.test.ts tests/dev-mcp-auth.test.ts tests/dev-mcp-tools.test.ts tests/dev-mcp-http.test.ts",
+    "test": "node --experimental-strip-types --experimental-sqlite --test tests/demo.test.ts tests/persistence.test.ts tests/http.test.ts tests/fastify.test.ts tests/tdlib-unit.test.ts tests/planner-evidence.test.ts tests/whatsapp-user.test.ts tests/owner-api-auth.test.ts tests/livekit-sip.test.ts tests/dev-observer.test.ts tests/dev-planner.test.ts tests/dev-mcp-auth.test.ts tests/dev-mcp-tools.test.ts tests/dev-mcp-http.test.ts tests/dev-execution-intent.test.ts tests/dev-managed-session.test.ts tests/dev-worktree-guard.test.ts",
     "test:tdlib:unit": "node --experimental-strip-types --test tests/tdlib-unit.test.ts",
     "preflight:local": "node scripts/local-preflight.mjs local",
     "preflight:tdlib": "node scripts/local-preflight.mjs tdlib",
-    "test:postgres": "node --experimental-strip-types --experimental-sqlite --test-concurrency=1 --test tests/postgres.test.ts tests/telegram.test.ts tests/orchestrator.test.ts tests/text-transport.test.ts tests/tdlib-user.test.ts tests/llm-workflow.test.ts tests/pause-resume.test.ts tests/whatsapp-postgres.test.ts tests/budget.test.ts tests/owner-questions.test.ts tests/approvals.test.ts tests/budget-reservations.test.ts tests/sip-calls.test.ts tests/sip-termination.test.ts tests/dev-observer-postgres.test.ts tests/dev-planner-postgres.test.ts tests/dev-mcp-postgres.test.ts",
+    "test:postgres": "node --experimental-strip-types --experimental-sqlite --test-concurrency=1 --test tests/postgres.test.ts tests/telegram.test.ts tests/orchestrator.test.ts tests/text-transport.test.ts tests/tdlib-user.test.ts tests/llm-workflow.test.ts tests/pause-resume.test.ts tests/whatsapp-postgres.test.ts tests/budget.test.ts tests/owner-questions.test.ts tests/approvals.test.ts tests/budget-reservations.test.ts tests/sip-calls.test.ts tests/sip-termination.test.ts tests/dev-observer-postgres.test.ts tests/dev-planner-postgres.test.ts tests/dev-mcp-postgres.test.ts tests/dev-execution-postgres.test.ts",
     "dev:telegram": "RUNTIME_PROFILE=postgres OUTBOUND_ENABLED=false node --experimental-strip-types --experimental-sqlite apps/worker/src/telegram.ts",
     "dev:orchestrator": "RUNTIME_PROFILE=postgres OUTBOUND_ENABLED=false node --experimental-strip-types apps/worker/src/orchestrator.ts",
     "dev:agent-telegram": "RUNTIME_PROFILE=postgres OUTBOUND_ENABLED=false node --experimental-strip-types apps/worker/src/agent-telegram.ts",
@@ -32,7 +32,8 @@
     "dev:github:serve": "RUNTIME_PROFILE=postgres node --experimental-strip-types apps/worker/src/dev-github-observer.ts --serve",
     "dev:roadmap": "RUNTIME_PROFILE=postgres node --experimental-strip-types apps/worker/src/dev-roadmap.ts",
     "dev:mcp:http": "RUNTIME_PROFILE=postgres OUTBOUND_ENABLED=false node --experimental-strip-types apps/api/src/dev-mcp-http.ts",
-    "dev:mcp:approve": "RUNTIME_PROFILE=postgres OUTBOUND_ENABLED=false node --experimental-strip-types apps/worker/src/dev-mcp-approve.ts"
+    "dev:mcp:approve": "RUNTIME_PROFILE=postgres OUTBOUND_ENABLED=false node --experimental-strip-types apps/worker/src/dev-mcp-approve.ts",
+    "dev:agent:local": "RUNTIME_PROFILE=postgres OUTBOUND_ENABLED=false node --experimental-strip-types apps/worker/src/dev-agent-local.ts"
   },
   "dependencies": {
     "@prisma/client": "6.19.0",

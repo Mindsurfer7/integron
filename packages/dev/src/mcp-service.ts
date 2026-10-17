@@ -198,6 +198,37 @@ export class DevMcpService {
       decisions };
   }
 
+  /**
+   * D5b session status is read-only and project-scoped. Exclude full worktree
+   * paths, model prompts, credentials and arbitrary provider output.
+   * An acknowledged session is never represented as a verified GitHub PR.
+   */
+  async managedSessions(principal: DevMcpPrincipal, projectSlug: string) {
+    requireDevScope(principal, projectSlug);
+    const sessions = await this.db.devAgentSession.findMany({
+      where: { task: { phase: { projectSlug } } },
+      orderBy: { createdAt: 'desc' }, take: 100,
+      select: {
+        id: true, taskId: true, provider: true, state: true, branch: true,
+        externalId: true, createdAt: true, updatedAt: true,
+        repository: { select: { fullName: true } },
+        executions: {
+          orderBy: { createdAt: 'desc' }, take: 20,
+          select: { id: true, action: true, state: true, fence: true,
+            errorCode: true, createdAt: true, claimedAt: true,
+            completedAt: true, expiresAt: true }
+        }
+      }
+    });
+    return sessions.map(session => ({
+      id: session.id, taskId: session.taskId, provider: session.provider,
+      repository: session.repository.fullName, branch: session.branch,
+      state: session.state, hasExternalSession: Boolean(session.externalId),
+      createdAt: session.createdAt, updatedAt: session.updatedAt,
+      executions: session.executions
+    }));
+  }
+
   async decisions(principal: DevMcpPrincipal, projectSlug: string) {
     requireDevScope(principal, projectSlug);
     return this.db.devDecision.findMany({
@@ -290,6 +321,10 @@ export class DevMcpService {
     requireDevScope(principal, projectSlug, true);
     if (!UUID.test(decisionId) || !DIGEST.test(digest)) throw new DevMcpError('INVALID_DECISION');
     return this.db.$transaction(async tx => {
+      // Coordinate D5b task reservation and D2 manifest mutations:
+      // never apply blockers while an agent's readiness is being reserved.
+      await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(2026101802)::text');
+      await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(2026101805)::text');
       const decision = await tx.devDecision.findUnique({ where: { id: decisionId } });
       if (!decision || decision.projectSlug !== projectSlug || decision.actorId !== principal.actorId) {
         throw new DevMcpError('DECISION_NOT_FOUND');

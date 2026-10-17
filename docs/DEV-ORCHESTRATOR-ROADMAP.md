@@ -1,6 +1,6 @@
 # Development Orchestrator — architecture and roadmap
 
-Status: D0–D2 merged to `dev` (D1 credentialed live GitHub smoke remains unverified). D3 local MCP implementation is in a feature branch under review. Target: Integron `dev`. This module is independent of P2–P7 messaging and voice acceptance.
+Status: D0–D3 merged to `dev` (D1 credentialed live GitHub smoke and D3 remote OAuth acceptance remain unverified). D5a adapter merged in PR #24; D5b durable execution in PR #25. Target: Integron `dev`. This module is independent of P2–P7 messaging and voice acceptance.
 
 D0 architecture decision: [DEV-ORCHESTRATOR-D0-ADR.md](DEV-ORCHESTRATOR-D0-ADR.md). D2 implementation and runbook: [DEV-ORCHESTRATOR-D2.md](DEV-ORCHESTRATOR-D2.md). D3 local MCP and security: [DEV-ORCHESTRATOR-D3.md](DEV-ORCHESTRATOR-D3.md).
 
@@ -89,7 +89,7 @@ Write operations must validate project/repository permissions, identity, request
 | D5 | Managed API/SDK agent runner and manual fallback | D2–D3 | One authorized agent task -> branch -> PR, safe restart/reconciliation |
 | D6 | CI watchdog, guarded merge, dashboard, summaries and alerts | D2–D5 | Failing CI surfaced; no merge before required green checks and approval |
 
-D0–D2 code is merged. D3 adds actual locally authenticated MCP tools and out-of-band approved blocker writes, but **does not** yet enable a remote public ChatGPT connection, phase acceptance, task dispatch or GitHub merges. D4 and D5 require the shared D3 contract. D1 credentialed real-repository smoke remains an outstanding acceptance item. P2–P7 outreach/voice work is not a prerequisite.
+D0–D2 code is merged. D3 merged with localhost-authenticated MCP tools and out-of-band approved blocker writes. D5a merged as OpenCode client adapter. D5b adds local-only durable authorizations and single-session creation; **no ChatGPT remote connection, automatic prompt dispatch, GitHub PR/merge writes or phase acceptance**. D4 and D5 require the shared D3 contract. D1 credentialed real-repository smoke remains an outstanding acceptance item. P2–P7 outreach/voice work is not a prerequisite.
 
 ## MVP acceptance scenario
 

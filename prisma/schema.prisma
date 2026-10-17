@@ -358,6 +358,7 @@ model DevRepository {
   updatedAt         DateTime           @updatedAt
   snapshot          DevGithubSnapshot?
   deliveries        DevGithubDelivery[]
+  agentSessions     DevAgentSession[]
   @@index([projectSlug])
 }
 
@@ -429,6 +430,8 @@ model DevTask {
   scopes           Json         @db.JsonB
   coordinationKeys Json         @db.JsonB
   blockers         DevBlocker[]
+  agentSessions    DevAgentSession[]
+  executions       DevExecution[]
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
   @@unique([phaseId, key])
@@ -484,4 +487,72 @@ model DevEvent {
   createdAt   DateTime    @default(now())
   @@index([projectSlug, createdAt])
   @@index([decisionId])
+}
+
+// D5b durable local agent records. D3 remains the sole owner of MCP auth.
+// No model here automatically authorizes execution or represents a verified PR.
+model DevAgentSession {
+  id           String         @id @default(uuid()) @db.Uuid
+  taskId       String         @db.Uuid
+  task         DevTask        @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  repositoryId String         @db.Uuid
+  repository   DevRepository  @relation(fields: [repositoryId], references: [id], onDelete: Restrict)
+  provider     String         @default("opencode")
+  directory    String
+  branch       String
+  externalId   String?
+  state        String         @default("reserved")
+  executions   DevExecution[]
+  artifacts    DevArtifact[]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  @@unique([provider, externalId])
+  @@index([taskId, state])
+  @@index([repositoryId, state])
+}
+
+model DevExecution {
+  id           String          @id @default(uuid()) @db.Uuid
+  taskId       String          @db.Uuid
+  task         DevTask         @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  sessionId    String          @db.Uuid
+  session      DevAgentSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  requestKey   String
+  action       String
+  intent       Json            @db.JsonB
+  intentDigest String
+  promptSha256 String?
+  maxCostCents Int
+  state        String          @default("pending")
+  fence        Int             @default(0)
+  expiresAt    DateTime
+  approvedAt   DateTime?
+  approvedBy   String?
+  claimedAt    DateTime?
+  completedAt  DateTime?
+  errorCode    String?
+  artifacts    DevArtifact[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  @@unique([taskId, requestKey])
+  @@index([state, expiresAt])
+  @@index([sessionId, state])
+}
+
+model DevArtifact {
+  id           String          @id @default(uuid()) @db.Uuid
+  sessionId    String          @db.Uuid
+  session      DevAgentSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  executionId  String          @db.Uuid
+  execution    DevExecution    @relation(fields: [executionId], references: [id], onDelete: Restrict)
+  source       String
+  kind         String
+  repository   String
+  sha          String?
+  reference    String?
+  verifiedAt   DateTime?
+  observedAt   DateTime        @default(now())
+  metadata     Json?           @db.JsonB
+  @@index([sessionId, observedAt])
+  @@index([repository, sha])
 }

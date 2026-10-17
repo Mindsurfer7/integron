@@ -12,6 +12,16 @@ const scopedWrite: DevMcpPrincipal = {
   actorId: 'local-owner', role: 'write', allowedProjects: ['flowboard']
 };
 const fakeDb = {
+  devAgentSession: {
+    findMany: async () => [{
+      id: 'local-session-id', taskId: 'task-1', provider: 'opencode',
+      state: 'unknown', branch: 'feat/demo', externalId: 'provider-secret',
+      createdAt: new Date(), updatedAt: new Date(),
+      repository: { fullName: 'Qonbex/qonbaq-flowboard' },
+      executions: [{ id: 'execution-1', state: 'unknown',
+        errorCode: 'OPENCODE_OUTCOME_UNKNOWN' }]
+    }]
+  },
   devProject: {
     findMany: async () => [{ slug: 'flowboard', name: 'Flowboard',
       repositories: [{ fullName: 'Qonbex/qonbaq-flowboard',
@@ -61,6 +71,7 @@ test('actual MCP tool registry separates read and write identities', async () =>
   const readNames: string[] = read.result.result.tools.map((tool: {name: string}) => tool.name);
   assert.ok(readNames.includes('integron_dev_projects'));
   assert.ok(readNames.includes('integron_dev_available_tasks'));
+  assert.ok(readNames.includes('integron_dev_sessions'));
   assert.ok(!readNames.includes('integron_dev_request_action'));
   assert.ok(!readNames.includes('integron_dev_apply_approved'));
 
@@ -87,6 +98,24 @@ test('MCP tools validate params before handler and reject forbidden project', as
   assert.ok(invalid.result.error || invalid.result.result?.isError);
   const denied = await rpc(scopedRead, 'tools/call',
     { name: 'integron_dev_status', arguments: { projectSlug: 'qonbaq' } });
+  assert.equal(denied.result.result?.isError, true);
+  assert.ok(denied.result.result.content[0].text.includes('PROJECT_FORBIDDEN'));
+});
+
+test('D5 managed sessions tool is read-only, project-scoped and redacts provider identifiers', async () => {
+  const called = await rpc(scopedRead, 'tools/call', {
+    name: 'integron_dev_sessions', arguments: { projectSlug: 'flowboard' }
+  });
+  assert.equal(called.response.status, 200, JSON.stringify(called.result));
+  assert.equal(called.result.result?.isError, undefined);
+  const sessions = JSON.parse(called.result.result.content[0].text);
+  assert.equal(sessions.length, 1);
+  assert.equal(sessions[0].state, 'unknown');
+  assert.equal(sessions[0].hasExternalSession, true);
+  assert.equal(JSON.stringify(sessions).includes('provider-secret'), false);
+  const denied = await rpc(scopedRead, 'tools/call', {
+    name: 'integron_dev_sessions', arguments: { projectSlug: 'qonbaq' }
+  });
   assert.equal(denied.result.result?.isError, true);
   assert.ok(denied.result.result.content[0].text.includes('PROJECT_FORBIDDEN'));
 });
