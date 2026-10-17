@@ -12,7 +12,9 @@ function fixtureFetch(options: { missingBranch?: boolean; fail?: boolean; fullPa
   const mock: HttpFetch = async (url, init) => {
     requests.push({ url, init });
     if (options.fail) return new Response('do not leak upstream error body', { status: 403 });
-    const path = new URL(url).pathname + new URL(url).search;
+    const parsed = new URL(url);
+    const path = parsed.pathname + parsed.search;
+    const page = parsed.searchParams.get('page');
     let response: unknown = {};
     if (path === '/repos/' + target.fullName) response = { default_branch: 'main' };
     else if (path === '/repos/' + target.fullName + '/branches/dev') {
@@ -20,11 +22,11 @@ function fixtureFetch(options: { missingBranch?: boolean; fail?: boolean; fullPa
       response = { commit: { sha: SHA } };
     }
     else if (path.includes('/pulls?')) {
-      response = path.includes('page=1')
+      response = (page === '1' || (options.fullPage && page === '2'))
         ? Array.from({ length: options.fullPage ? 100 : 1 }, (_, i) => ({
-          number: i + 1 + (path.includes('page=2') ? 100 : 0), title: 'A PR: external untrusted text',
+          number: i + 1 + (page === '2' ? 100 : 0), title: 'A PR: external untrusted text',
           html_url: 'https://github.com/Qonbex/qonbaq-flowboard/pull/' + (i + 1),
-          state: i === 0 && path.includes('page=1') ? 'open' : 'closed', draft: false, merged_at: null,
+          state: i === 0 && page === '1' ? 'open' : 'closed', draft: false, merged_at: null,
           base: { ref: 'dev' }, head: { ref: 'feature', sha: SHA },
           updated_at: '2026-10-18T00:00:00Z'
         }))
