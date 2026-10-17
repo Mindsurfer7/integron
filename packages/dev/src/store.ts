@@ -4,7 +4,12 @@ import { DEVELOPMENT_PROJECTS, repositoryTargets } from './registry.ts';
 import { type GithubEvent } from './webhooks.ts';
 
 export class DevGithubStore {
-  constructor(private readonly db: PrismaClient, private readonly client: GithubReadonlyClient) {}
+  private readonly db: PrismaClient;
+  private readonly client: GithubReadonlyClient;
+  constructor(db: PrismaClient, client: GithubReadonlyClient) {
+    this.db = db;
+    this.client = client;
+  }
 
   /** Seeding is constrained to a reviewed allowlist and is idempotent. */
   async seed(): Promise<void> {
