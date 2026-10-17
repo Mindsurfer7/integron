@@ -1,64 +1,50 @@
-/** Immutable metadata; do not persist raw prompts, API keys or cookies. */
-import { createHash } from 'node:crypto';
-import { AgentRunnerError } from './agent-runner.ts';
-import { DEVELOPMENT_PROJECTS } from './registry.ts';
+/** Load a single transaction snapshot for D2 readiness at D5b reservation time. */
+import { Prisma } from '@prisma/client';
+import {
+  buildDevelopmentPlan, type PhaseNode, type TaskNode, type RepositoryObservation,
+  type PhaseState, type TaskState, type DevPlan, type DevScope
+} from './planner.ts';
 
-export interface ManagedCreateIntent {
-  version: 1;
-  action: 'create_session';
-  taskId: string;
-  repository: string;
-  directory: string;
-  branch: string;
-  title: string;
-  requestKey: string;
-  maxCostCents: number;
-}
-export const uuidFormat = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const keyFormat = /^[a-zA-Z0-9_-]{12,80}$/;
-export function createManagedIntent(input: Omit<ManagedCreateIntent, 'version'|'action'>): ManagedCreateIntent {
-  if (!uuidFormat.test(input.taskId) || !keyFormat.test(input.requestKey)) {
-    throw new AgentRunnerError('INVALID_EXECUTION_IDENTITY');
-  }
-  if (!DEVELOPMENT_PROJECTS.some(p => p.repos.some(r => r.fullName === input.repository))) {
-    throw new AgentRunnerError('UNRECOGNIZED_REPOSITORY');
-  }
-  if (typeof input.directory !== 'string' || !/^\/[a-zA-Z0-9_./+-]{1,2047}$/.test(input.directory) ||
-      input.directory.endsWith('/') || input.directory.includes('//') ||
-      input.directory.split('/').some(p => p === '.' || p === '..')) {
-    throw new AgentRunnerError('INVALID_WORKSPACE');
-  }
-  if (typeof input.branch !== 'string' || !/^feat\/[a-zA-Z0-9][a-zA-Z0-9._/-]{1,127}$/.test(input.branch) ||
-      input.branch.includes('..') || input.branch.includes('//') || input.branch.endsWith('/') ||
-      input.branch.endsWith('.lock') || input.branch.split('/').some(p => p.startsWith('.'))) {
-    throw new AgentRunnerError('INVALID_BRANCH');
-  }
-  if (typeof input.title !== 'string' || !input.title.trim() || input.title.length > 200 ||
-      /[\u0000-\u001f\u007f]/.test(input.title)) {
-    throw new AgentRunnerError('INVALID_EXECUTION_TITLE');
-  }
-  if (!Number.isInteger(input.maxCostCents) || input.maxCostCents < 0 ||
-      input.maxCostCents > 100_000) throw new AgentRunnerError('INVALID_EXECUTION_BUDGET');
-  return Object.freeze({
-    version: 1, action: 'create_session', taskId: input.taskId,
-    repository: input.repository, directory: input.directory,
-    branch: input.branch, title: input.title, requestKey: input.requestKey,
-    maxCostCents: input.maxCostCents
+const obj = (v: unknown): Record<string, unknown> =>
+  v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : {};
+const str = (v: unknown) => typeof v === 'string' ? v : '';
+const strings = (v: unknown): string[] => Array.isArray(v) ?
+  v.filter((x): x is string => typeof x === 'string') : [];
+const scopes = (v: unknown): DevScope[] => Array.isArray(v) ? v.map(obj)
+  .map(o => ({ repo: str(o.repo), paths: strings(o.paths) })) : [];
+
+export async function planInExecutionTransaction(tx: Prisma.TransactionClient, now: Date): Promise<DevPlan> {
+  const [phaseRows, dependencies, repositoryRows] = await Promise.all([
+    tx.devPhase.findMany({
+      include: { tasks: { include: { blockers: { where: { state: 'open' } } } } }
+    }),
+    tx.devDependency.findMany(),
+    tx.devRepository.findMany({ include: { snapshot: true } })
+  ]);
+  const phases: PhaseNode[] = phaseRows.map(p => ({
+    id: p.id, projectSlug: p.projectSlug, code: p.code,
+    state: p.state as PhaseState, acceptanceCriteria: strings(p.acceptanceCriteria),
+    acceptedAt: p.acceptedAt?.toISOString() ?? null,
+    acceptanceEvidence: Array.isArray(p.acceptanceEvidence) ?
+      p.acceptanceEvidence.map(obj).map(e => ({
+        repo: str(e.repo), sha: str(e.sha), verifiedAt: str(e.verifiedAt)
+      })) : []
+  }));
+  const tasks: TaskNode[] = phaseRows.flatMap(p => p.tasks.map(t => ({
+    id: t.id, phaseId: p.id, key: t.key, title: t.title,
+    priority: t.priority, state: t.state as TaskState,
+    scopes: scopes(t.scopes), coordinationKeys: strings(t.coordinationKeys),
+    openBlockers: t.blockers.map(b => b.id)
+  })));
+  const repositories: RepositoryObservation[] = repositoryRows.map(r => ({
+    fullName: r.fullName, enabled: r.enabled, stale: r.snapshot?.stale ?? true,
+    observedAt: r.snapshot?.observedAt.toISOString() ?? null,
+    integrationSha: str(obj(r.snapshot?.payload).integrationSha) || null
+  }));
+  return buildDevelopmentPlan({
+    phases, tasks, repositories, now,
+    dependencies: dependencies.map(d => ({
+      phaseId: d.phaseId, requiresPhaseId: d.requiresPhaseId
+    }))
   });
-}
-export function digestManagedIntent(intent: ManagedCreateIntent): string {
-  return createHash('sha256').update(JSON.stringify(intent)).digest('hex');
-}
-export type ExecutionState =
-  'pending' | 'approved' | 'attempting' | 'acknowledged' |
-  'unknown' | 'rejected' | 'expired';
-export type AgentSessionState = 'reserved' | 'creating' | 'active' | 'unknown' | 'closed';
-export function canTransitionExecution(from: ExecutionState, to: ExecutionState): boolean {
-  const edges: Record<ExecutionState, readonly ExecutionState[]> = {
-    pending: ['approved', 'rejected', 'expired'],
-    approved: ['attempting', 'expired'],
-    attempting: ['acknowledged', 'unknown'],
-    acknowledged: [], unknown: [], rejected: [], expired: []
-  };
-  return edges[from]?.includes(to) ?? false;
 }
