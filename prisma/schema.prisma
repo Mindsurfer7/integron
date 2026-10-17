@@ -342,6 +342,7 @@ model DevProject {
   slug         String          @id
   name         String
   repositories DevRepository[]
+  phases       DevPhase[]
 }
 
 model DevRepository {
@@ -378,4 +379,68 @@ model DevGithubDelivery {
   payloadSha256 String
   receivedAt    DateTime      @default(now())
   @@index([repositoryId, receivedAt])
+}
+
+
+// D2: roadmap execution planning. Status is NOT inferred from a merged PR.
+// Phase acceptance is intentionally not writable through the D2 import path.
+model DevPhase {
+  id                  String          @id @default(uuid()) @db.Uuid
+  projectSlug         String
+  project             DevProject      @relation(fields: [projectSlug], references: [slug], onDelete: Restrict)
+  code                String
+  workstream          String
+  title               String
+  description         String          @default("")
+  state               String          @default("planned")
+  acceptanceCriteria  Json            @db.JsonB
+  acceptedAt          DateTime?
+  acceptanceEvidence  Json?           @db.JsonB
+  prerequisites       DevDependency[] @relation("DependentPhase")
+  requiredBy          DevDependency[] @relation("PrerequisitePhase")
+  tasks               DevTask[]
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  @@unique([projectSlug, code])
+  @@index([projectSlug, workstream])
+}
+
+model DevDependency {
+  phaseId         String   @db.Uuid
+  requiresPhaseId String   @db.Uuid
+  phase           DevPhase @relation("DependentPhase", fields: [phaseId], references: [id], onDelete: Cascade)
+  prerequisite    DevPhase @relation("PrerequisitePhase", fields: [requiresPhaseId], references: [id], onDelete: Restrict)
+  createdAt       DateTime @default(now())
+  @@id([phaseId, requiresPhaseId])
+  @@index([requiresPhaseId])
+}
+
+model DevTask {
+  id               String       @id @default(uuid()) @db.Uuid
+  phaseId          String       @db.Uuid
+  phase            DevPhase     @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  key              String
+  title            String
+  description      String       @default("")
+  priority         Int          @default(100)
+  state            String       @default("planned")
+  scopes           Json         @db.JsonB
+  coordinationKeys Json         @db.JsonB
+  blockers         DevBlocker[]
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  @@unique([phaseId, key])
+  @@index([state, priority])
+}
+
+model DevBlocker {
+  id         String    @id @default(uuid()) @db.Uuid
+  taskId     String    @db.Uuid
+  task       DevTask   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  kind       String
+  detail     String
+  state      String    @default("open")
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+  @@index([taskId, state])
 }
