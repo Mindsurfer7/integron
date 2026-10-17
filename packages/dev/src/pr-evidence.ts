@@ -34,8 +34,12 @@ export class DevPrEvidenceError extends Error {
 const error = (code: string): never => { throw new DevPrEvidenceError(code); };
 
 export class DevPrEvidenceStore {
-  constructor(private readonly db: PrismaClient,
-    private readonly github: GithubReadonlyClient) {}
+  private readonly db: PrismaClient;
+  private readonly github: GithubReadonlyClient;
+  constructor(db: PrismaClient, github: GithubReadonlyClient) {
+    this.db = db;
+    this.github = github;
+  }
 
   async observe(sessionId: string, prNumber: number,
     now = new Date()): Promise<ObservedManagedPr> {
