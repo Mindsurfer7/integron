@@ -58,7 +58,7 @@ try {
     const input = raw as Record<string, unknown>;
     // Fail closed if file attempts to smuggle an action, approval, or credentials.
     const permitted = new Set(['taskId', 'repository', 'directory', 'branch',
-      'title', 'requestKey', 'maxCostCents']);
+      'baseSha', 'title', 'requestKey', 'maxCostCents']);
     if (Object.keys(input).some(k => !permitted.has(k))) throw new Error('INTENT_FILE_INVALID');
     const prepared = await store.prepareCreate(input as never);
     console.log(JSON.stringify(prepared, null, 2));
