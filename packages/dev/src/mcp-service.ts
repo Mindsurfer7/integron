@@ -91,7 +91,7 @@ function safeSnapshot(value: unknown) {
           const row = check as Record<string, unknown>;
           return [{
             name: typeof row.name === 'string' ? row.name.slice(0, 100)
-              .replace(/[\\x00-\\x1f\\x7f]/g, '') : 'unknown',
+              .replace(/[\x00-\x1f\x7f]/g, '') : 'unknown',
             status: validStatus(row.status),
             conclusion: row.conclusion === null ? null : validStatus(row.conclusion)
           }];
