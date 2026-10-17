@@ -1,8 +1,8 @@
 # Development Orchestrator — architecture and roadmap
 
-Status: D0 ADR and D1 read-only observer implemented in feature branch; runtime acceptance pending CI and credentialed smoke test. Target: Integron `dev`. This module is independent of P2–P7 messaging and voice acceptance.
+Status: D0/D1 merged to `dev`; D1 credentialed smoke acceptance still pending. D2 planner in feature-branch PR. Target: Integron `dev`. This module is independent of P2–P7 messaging and voice acceptance.
 
-D0 architecture decision: [DEV-ORCHESTRATOR-D0-ADR.md](DEV-ORCHESTRATOR-D0-ADR.md).
+D0 architecture decision: [DEV-ORCHESTRATOR-D0-ADR.md](DEV-ORCHESTRATOR-D0-ADR.md). D2 implementation and runbook: [DEV-ORCHESTRATOR-D2.md](DEV-ORCHESTRATOR-D2.md).
 
 ## Goal
 
@@ -89,7 +89,7 @@ Write operations must validate project/repository permissions, identity, request
 | D5 | Managed API/SDK agent runner and manual fallback | D2–D3 | One authorized agent task -> branch -> PR, safe restart/reconciliation |
 | D6 | CI watchdog, guarded merge, dashboard, summaries and alerts | D2–D5 | Failing CI surfaced; no merge before required green checks and approval |
 
-D0 and a read-only D1 prototype may begin now. D4 and D5 can progress independently after shared D2–D3 contracts. P2–P7 outreach/voice work is not a prerequisite.
+D0/D1 code has been merged; D2 planning code is under review. D4 and D5 can progress independently after shared D2–D3 contracts. D1's credentialed real-repository smoke test remains an outstanding acceptance item. P2–P7 outreach/voice work is not a prerequisite.
 
 ## MVP acceptance scenario
 
