@@ -4,6 +4,8 @@ import { test } from 'node:test';
 import { PrismaClient } from '@prisma/client';
 import { DevExecutionStore } from '../packages/dev/src/execution-store.ts';
 import { AgentRunnerError } from '../packages/dev/src/agent-runner.ts';
+import { createManagedIntent, digestManagedIntent } from '../packages/dev/src/execution-intent.ts';
+import { promptSha256 } from '../packages/dev/src/prompt-intent.ts';
 
 test('D5b PostgreSQL: concurrent idempotency, fenced claims, unknown/expired outcomes', {
   skip: !process.env.DATABASE_URL
@@ -151,6 +153,75 @@ test('D5b PostgreSQL: concurrent idempotency, fenced claims, unknown/expired out
     }, now);
     assert.equal(await store.expireUnattempted(other.id, new Date(now.getTime() + 20 * 60_000)), true);
     assert.equal((await db.devTask.findUniqueOrThrow({ where: { id: secondTask.id } })).state, 'planned');
+
+    // D5d: previously acknowledged empty session may acquire one separate,
+    // exact-digest local-model prompt; task remains paused until PR/CI review.
+    const thirdTask = await db.devTask.create({
+      data: { phaseId, key: 'third', title: 'D5d local prompt', priority: 0,
+        state: 'paused',
+        scopes: [{ repo: fullName, paths: ['docs/d5d-third-unique/**'] }],
+        coordinationKeys: [] }
+    });
+    const originalIntent = createManagedIntent({
+      taskId: thirdTask.id, repository: fullName,
+      directory: '/tmp/d5d-third', branch: 'feat/d5d-third',
+      baseSha: integrationSha, title: 'D5d session',
+      requestKey: 'create_request_123456', maxCostCents: 0
+    });
+    const thirdSession = await db.devAgentSession.create({ data: {
+      taskId: thirdTask.id, repositoryId: repoId!,
+      provider: 'opencode', directory: originalIntent.directory,
+      branch: originalIntent.branch, externalId: 'ses_d5d_123',
+      state: 'active'
+    } });
+    await db.devExecution.create({ data: {
+      taskId: thirdTask.id, sessionId: thirdSession.id,
+      requestKey: originalIntent.requestKey, action: 'create_session',
+      intent: originalIntent, intentDigest: digestManagedIntent(originalIntent),
+      state: 'acknowledged', maxCostCents: 0,
+      expiresAt: new Date(now.getTime() + 60_000)
+    } });
+    const promptDigest = promptSha256('Write a short README inside scoped folder.');
+    const promptInput = {
+      sessionId: thirdSession.id, requestKey: 'prompt_request_123456',
+      promptSha256: promptDigest, modelID: 'coder-local', maxCostCents: 0 as const
+    };
+    const pendingPrompt = await store.preparePrompt(promptInput, now);
+    const replayPrompt = await store.preparePrompt(promptInput, now);
+    assert.equal(pendingPrompt.id, replayPrompt.id);
+    assert.equal(pendingPrompt.state, 'pending');
+    await assert.rejects(store.preparePrompt({
+      ...promptInput, promptSha256: 'b'.repeat(64)
+    }, now), error('EXECUTION_KEY_COLLISION'));
+    const inspected = await store.inspectPrompt(pendingPrompt.id);
+    assert.equal(inspected.intent.model.providerID, 'ollama');
+    assert.equal(inspected.intent.promptSha256, promptDigest);
+    await store.approveLocal(pendingPrompt.id, pendingPrompt.digest, 'local-owner', now);
+    const newBlocker = await db.devBlocker.create({ data: {
+      taskId: thirdTask.id, kind: 'owner_review', detail: 'D3 owner blocker'
+    } });
+    await assert.rejects(store.claimPromptApproved(
+      pendingPrompt.id, pendingPrompt.digest, now
+    ), error('EXECUTION_NEW_BLOCKER'));
+    await db.devBlocker.delete({ where: { id: newBlocker.id } });
+    const promptClaim = await store.claimPromptApproved(
+      pendingPrompt.id, pendingPrompt.digest, now
+    );
+    assert.equal(promptClaim.fence, 1);
+    assert.equal(promptClaim.intent.externalId, 'ses_d5d_123');
+    await assert.rejects(store.claimPromptApproved(
+      pendingPrompt.id, pendingPrompt.digest, now
+    ), error('PROMPT_NOT_APPROVED'));
+    await store.settlePromptAttempt(pendingPrompt.id, promptClaim.fence, {
+      outcome: 'acknowledged'
+    }, now);
+    assert.equal((await db.devAgentSession.findUniqueOrThrow({
+      where: { id: thirdSession.id }
+    })).state, 'active');
+    assert.equal((await db.devTask.findUniqueOrThrow({
+      where: { id: thirdTask.id }
+    })).state, 'paused');
+
   } finally {
     if (phaseId) {
       const sessions = await db.devAgentSession.findMany({
