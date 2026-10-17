@@ -257,7 +257,7 @@ export class DevMcpService {
       if (changed.count !== 1) throw new DevMcpError('DECISION_CONCURRENT_CHANGE');
       await tx.devEvent.create({
         data: { projectSlug: decision.projectSlug, actorId: 'local_tty_owner',
-          eventKey: choice + ':' + id, kind: 'decision_' + choice + 'd',
+          eventKey: choice + ':' + id, kind: choice === 'approve' ? 'decision_approved' : 'decision_rejected',
           targetId: id, decisionId: id,
           metadata: { digest } }
       });
