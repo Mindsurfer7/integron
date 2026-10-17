@@ -290,6 +290,10 @@ export class DevMcpService {
     requireDevScope(principal, projectSlug, true);
     if (!UUID.test(decisionId) || !DIGEST.test(digest)) throw new DevMcpError('INVALID_DECISION');
     return this.db.$transaction(async tx => {
+      // Coordinate D5b task reservation and D2 manifest mutations:
+      // never apply blockers while an agent's readiness is being reserved.
+      await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(2026101802)::text');
+      await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(2026101805)::text');
       const decision = await tx.devDecision.findUnique({ where: { id: decisionId } });
       if (!decision || decision.projectSlug !== projectSlug || decision.actorId !== principal.actorId) {
         throw new DevMcpError('DECISION_NOT_FOUND');

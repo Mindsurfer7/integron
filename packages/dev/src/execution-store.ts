@@ -43,6 +43,7 @@ export class DevExecutionStore {
     const digest = digestManagedIntent(intent);
     if (!Number.isFinite(now.getTime())) fail('INVALID_EXECUTION_TIME');
     return this.db.$transaction(async tx => {
+      await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(2026101802)::text');
       await tx.$queryRawUnsafe(LOCK);
       const previous = await tx.devExecution.findUnique({
         where: { taskId_requestKey: { taskId: intent.taskId, requestKey: intent.requestKey } }
@@ -115,6 +116,7 @@ export class DevExecutionStore {
     if (!uuidFormat.test(id) || !KEY.test(digest) ||
         actor !== 'local-owner' || !Number.isFinite(now.getTime())) fail('INVALID_APPROVAL');
     return this.db.$transaction(async tx => {
+      await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(2026101802)::text');
       await tx.$queryRawUnsafe(LOCK);
       const row = await tx.devExecution.findUnique({ where: { id } });
       if (!row || row.intentDigest !== digest) fail('EXECUTION_APPROVAL_MISMATCH');
@@ -140,6 +142,7 @@ export class DevExecutionStore {
       fail('INVALID_EXECUTION_IDENTITY');
     }
     return this.db.$transaction(async tx => {
+      await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(2026101802)::text');
       await tx.$queryRawUnsafe(LOCK);
       const row = await tx.devExecution.findUnique({
         where: { id }, include: { session: true }
@@ -174,6 +177,7 @@ export class DevExecutionStore {
       fail('INVALID_EXECUTION_ERROR');
     }
     await this.db.$transaction(async tx => {
+      await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(2026101802)::text');
       await tx.$queryRawUnsafe(LOCK);
       const row = await tx.devExecution.findUnique({ where: { id } });
       if (!row || row.state !== 'attempting' || row.fence !== fence) {
@@ -201,6 +205,7 @@ export class DevExecutionStore {
       fail('INVALID_EXECUTION_IDENTITY');
     }
     return this.db.$transaction(async tx => {
+      await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(2026101802)::text');
       await tx.$queryRawUnsafe(LOCK);
       const row = await tx.devExecution.findUnique({
         where: { id }, include: { session: true }
