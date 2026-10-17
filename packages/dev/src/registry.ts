@@ -10,7 +10,7 @@ export const DEVELOPMENT_PROJECTS = [
     { fullName: 'Qonbex/qonbaq-flowboard', integrationBranch: 'dev' }
   ] },
   { slug: 'mindsurfing', name: 'Mindsurfing', repos: [
-    { fullName: 'MindsurfingClub/mindsurfing', integrationBranch: 'development' }
+    { fullName: 'MindsurfingClub/mindsurfing', integrationBranch: 'dev' }
   ] }
 ] as const;
 
