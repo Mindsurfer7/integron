@@ -38,6 +38,9 @@ app.addHook('onSend', async (_request, reply, payload) => {
   return payload;
 });
 app.all('/mcp', async (request, reply) => {
+  if (request.method !== 'POST') {
+    return reply.code(405).header('Allow', 'POST').send({ error: 'METHOD_NOT_ALLOWED' });
+  }
   // Bearer only; no cookies or browser sessions, and never trust X-Forwarded-*.
   const principal = auth.authorize(request.headers.authorization);
   if (!principal) {
@@ -46,9 +49,17 @@ app.all('/mcp', async (request, reply) => {
   }
   // Stateless per-request SDK handler, captured principal; no cross-request
   // global mutable identity. SDK parses MCP JSON-RPC and validates each tool.
-  const handler = toNodeHandler(createMcpHandler(() => createDevMcpServer(db, principal)));
+  const mcp = createMcpHandler(() => createDevMcpServer(db, principal), {
+    responseMode: 'json',
+    maxSubscriptions: 0,
+    maxRequestBodySize: 8_192
+  });
+  const handler = toNodeHandler(mcp);
+  reply.raw.setHeader('Cache-Control', 'no-store');
+  reply.raw.setHeader('X-Content-Type-Options', 'nosniff');
   reply.hijack();
-  await handler(request.raw, reply.raw, request.body);
+  try { await handler(request.raw, reply.raw, request.body); }
+  finally { await mcp.close(); }
 });
 
 let closing = false;
