@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "phases": [
+    {
+      "projectSlug": "qonbaq",
+      "code": "EXAMPLE-CONTRACT",
+      "workstream": "integration",
+      "title": "Example backend contract (not real roadmap status)",
+      "description": "Sample only: replace with an approved Qonbaq phase.",
+      "acceptanceCriteria": [
+        "Integration contract reviewed and tests linked to a SHA"
+      ],
+      "dependsOn": [],
+      "tasks": [
+        {
+          "key": "api-contract",
+          "title": "Review backend contract",
+          "priority": 10,
+          "scopes": [
+            {
+              "repo": "Qonbex/qonbaq",
+              "paths": [
+                "apps/api/**"
+              ]
+            }
+          ],
+          "coordinationKeys": [
+            "example:shared-contract"
+          ]
+        }
+      ]
+    },
+    {
+      "projectSlug": "flowboard",
+      "code": "EXAMPLE-VIEWER",
+      "workstream": "G",
+      "title": "Example Flowboard integration (not real roadmap status)",
+      "acceptanceCriteria": [
+        "Visual review and CI acceptance recorded"
+      ],
+      "dependsOn": [
+        {
+          "projectSlug": "qonbaq",
+          "code": "EXAMPLE-CONTRACT"
+        }
+      ],
+      "tasks": [
+        {
+          "key": "ui-viewer",
+          "title": "Review viewer integration",
+          "priority": 20,
+          "scopes": [
+            {
+              "repo": "Qonbex/qonbaq-flowboard",
+              "paths": [
+                "src/**"
+              ]
+            }
+          ],
+          "coordinationKeys": [
+            "example:shared-contract"
+          ]
+        }
+      ]
+    },
+    {
+      "projectSlug": "mindsurfing",
+      "code": "EXAMPLE-HARDENING",
+      "workstream": "security",
+      "title": "Example hardening task (not real roadmap status)",
+      "acceptanceCriteria": [
+        "Security tests and review documented"
+      ],
+      "dependsOn": [],
+      "tasks": [
+        {
+          "key": "security-tests",
+          "title": "Expand application security tests",
+          "priority": 30,
+          "scopes": [
+            {
+              "repo": "MindsurfingClub/mindsurfing",
+              "paths": [
+                "tests/**"
+              ]
+            }
+          ],
+          "coordinationKeys": []
+        }
+      ]
+    }
+  ]
+}
