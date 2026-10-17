@@ -479,6 +479,7 @@ model DevExecution {
   session      DevAgentSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
   requestKey   String
   action       String
+  intent       Json            @db.JsonB
   intentDigest String
   promptSha256 String?
   maxCostCents Int

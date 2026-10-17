@@ -30,6 +30,7 @@ CREATE TABLE "DevExecution" (
   "sessionId" UUID NOT NULL,
   "requestKey" TEXT NOT NULL,
   "action" TEXT NOT NULL,
+  "intent" JSONB NOT NULL,
   "intentDigest" TEXT NOT NULL,
   "promptSha256" TEXT,
   "maxCostCents" INTEGER NOT NULL,
