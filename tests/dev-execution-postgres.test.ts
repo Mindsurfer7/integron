@@ -88,6 +88,32 @@ test('D5b PostgreSQL: concurrent idempotency, fenced claims, unknown/expired out
     await assert.rejects(store.approveLocal(first.id, first.digest, 'local-owner', now),
       error('EXECUTION_NOT_PENDING'));
 
+    // D3 blocker changes after preparation revoke dispatch until resolved.
+    const blocker = await db.devBlocker.create({
+      data: { taskId: id, kind: 'owner_review', detail: 'Approval revoked by D3' }
+    });
+    await assert.rejects(store.claimApproved(first.id, first.digest, now),
+      error('EXECUTION_NEW_BLOCKER'));
+    await db.devBlocker.delete({ where: { id: blocker.id } });
+    // A changed integration branch HEAD invalidates the approved intent.
+    await db.devGithubSnapshot.update({
+      where: { repositoryId: repoId! }, data: { payload: { integrationSha: 'b'.repeat(40) } }
+    });
+    await assert.rejects(store.claimApproved(first.id, first.digest, now),
+      error('INTEGRATION_SHA_CHANGED'));
+    await db.devGithubSnapshot.update({
+      where: { repositoryId: repoId! }, data: { payload: { integrationSha } }
+    });
+    // A stale observer snapshot must never authorize a new provider side effect.
+    await db.devGithubSnapshot.update({
+      where: { repositoryId: repoId! },
+      data: { observedAt: new Date(now.getTime() - 60 * 60_000) }
+    });
+    await assert.rejects(store.claimApproved(first.id, first.digest, now),
+      error('EXECUTION_REPOSITORY_STALE'));
+    await db.devGithubSnapshot.update({
+      where: { repositoryId: repoId! }, data: { observedAt: now }
+    });
     const claim = await store.claimApproved(first.id, first.digest, now);
     assert.equal(claim.fence, 1);
     assert.equal(claim.sessionId, first.sessionId);
