@@ -15,6 +15,7 @@ import { PrismaClient } from '@prisma/client';
 import { DevExecutionStore } from '../../../packages/dev/src/execution-store.ts';
 import { dispatchApprovedSession } from '../../../packages/dev/src/managed-session.ts';
 import { OpenCodeClient } from '../../../packages/dev/src/opencode-client.ts';
+import { verifyManagedWorktree } from '../../../packages/dev/src/worktree-guard.ts';
 
 if (process.env.RUNTIME_PROFILE !== 'postgres' || !process.env.DATABASE_URL) {
   throw new Error('D5b requires RUNTIME_PROFILE=postgres and DATABASE_URL');
@@ -90,6 +91,10 @@ try {
     }
     console.log(JSON.stringify(inspected, null, 2));
     await confirmHuman('RUN', inspected.digest);
+    if (!process.env.OPENCODE_ALLOWED_WORKTREE_ROOT) {
+      throw new Error('OPENCODE_ALLOWED_WORKTREE_ROOT_REQUIRED');
+    }
+    await verifyManagedWorktree(inspected.intent, process.env.OPENCODE_ALLOWED_WORKTREE_ROOT);
     const client = new OpenCodeClient({
       baseUrl: process.env.OPENCODE_SERVER_URL,
       password: process.env.OPENCODE_SERVER_PASSWORD,

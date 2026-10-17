@@ -33,7 +33,8 @@ pnpm db:deploy
 export DATABASE_URL="postgresql://..."
 export OPENCODE_SERVER_PASSWORD="long-unique-local-secret"
 export OPENCODE_SERVER_URL="http://127.0.0.1:4096"
-# Start OpenCode serve yourself in a dedicated, independently checked worktree.
+export OPENCODE_ALLOWED_WORKTREE_ROOT="/absolute/path/to/isolated/worktrees"
+# Start OpenCode serve yourself in a dedicated, independently checked worktree. The CLI verifies that the exact worktree root is inside the configured trusted root, has the approved feature branch and integration SHA at HEAD, a clean worktree and the allowlisted GitHub origin.
 # Keep its host bound to 127.0.0.1 and configure matching Basic auth.
 
 pnpm dev:agent:local --prepare ./private-reviewed-intent.json
