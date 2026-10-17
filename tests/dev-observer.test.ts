@@ -22,9 +22,9 @@ function fixtureFetch(options: { missingBranch?: boolean; fail?: boolean; fullPa
     else if (path.includes('/pulls?')) {
       response = path.includes('page=1')
         ? Array.from({ length: options.fullPage ? 100 : 1 }, (_, i) => ({
-          number: i + 1, title: 'A PR: external untrusted text',
+          number: i + 1 + (path.includes('page=2') ? 100 : 0), title: 'A PR: external untrusted text',
           html_url: 'https://github.com/Qonbex/qonbaq-flowboard/pull/' + (i + 1),
-          state: i === 0 ? 'open' : 'closed', draft: false, merged_at: null,
+          state: i === 0 && path.includes('page=1') ? 'open' : 'closed', draft: false, merged_at: null,
           base: { ref: 'dev' }, head: { ref: 'feature', sha: SHA },
           updated_at: '2026-10-18T00:00:00Z'
         }))
