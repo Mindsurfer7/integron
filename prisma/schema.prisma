@@ -343,6 +343,8 @@ model DevProject {
   name         String
   repositories DevRepository[]
   phases       DevPhase[]
+  devDecisions DevDecision[]
+  devEvents    DevEvent[]
 }
 
 model DevRepository {
@@ -443,4 +445,43 @@ model DevBlocker {
   createdAt  DateTime  @default(now())
   resolvedAt DateTime?
   @@index([taskId, state])
+}
+
+
+// D3: owner action intent, out-of-band approval and append-only audited outcomes.
+// No Github/agent action can be represented by a D3 approved intent.
+model DevDecision {
+  id            String     @id @default(uuid()) @db.Uuid
+  projectSlug   String
+  project       DevProject @relation(fields: [projectSlug], references: [slug], onDelete: Restrict)
+  actorId       String
+  requestKey    String
+  actionType    String
+  intent        Json       @db.JsonB
+  intentDigest  String
+  state         String     @default("pending")
+  result        Json?      @db.JsonB
+  expiresAt     DateTime
+  approvedAt    DateTime?
+  approvedBy    String?
+  consumedAt    DateTime?
+  createdAt     DateTime   @default(now())
+  @@unique([actorId, requestKey])
+  @@index([projectSlug, state])
+  @@index([state, expiresAt])
+}
+
+model DevEvent {
+  id          String      @id @default(uuid()) @db.Uuid
+  projectSlug String
+  project     DevProject  @relation(fields: [projectSlug], references: [slug], onDelete: Restrict)
+  eventKey    String      @unique
+  actorId     String
+  kind        String
+  targetId    String
+  decisionId  String?     @db.Uuid
+  metadata    Json?       @db.JsonB
+  createdAt   DateTime    @default(now())
+  @@index([projectSlug, createdAt])
+  @@index([decisionId])
 }
