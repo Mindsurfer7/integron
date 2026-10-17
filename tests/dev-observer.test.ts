@@ -67,8 +67,8 @@ test('missing dev branch is represented as missing, never silently replaced by m
 test('bounded PR enumeration reports unindexed data honestly', async () => {
   const { mock } = fixtureFetch({ fullPage: true });
   const snapshot = await new GithubReadonlyClient('test-placeholder', mock).snapshot(target);
-  assert.equal(snapshot.pullRequests.length, 100);
-  assert.equal(snapshot.partial, false);
+  assert.equal(snapshot.pullRequests.length, 200);
+  assert.equal(snapshot.partial, true);
   assert.equal(snapshot.checkCoverage, 1);
 });
 
