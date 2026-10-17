@@ -40,8 +40,10 @@ export interface GithubSnapshot {
   checkCoverage: number;
 }
 export class GithubObserverError extends Error {
-  constructor(public readonly code: string) {
+  readonly code: string;
+  constructor(code: string) {
     super(code);
+    this.code = code;
     this.name = 'GithubObserverError';
   }
 }
@@ -76,11 +78,13 @@ function validateBranch(branch: string): string {
 export type HttpFetch = (input: string, init?: RequestInit) => Promise<Response>;
 
 export class GithubReadonlyClient {
-  constructor(
-    private readonly token: string,
-    private readonly http: HttpFetch = fetch,
-    private readonly api = 'https://api.github.com'
-  ) {
+  private readonly token: string;
+  private readonly http: HttpFetch;
+  private readonly api: string;
+  constructor(token: string, http: HttpFetch = fetch, api = 'https://api.github.com') {
+    this.token = token;
+    this.http = http;
+    this.api = api;
     if (!token) throw new GithubObserverError('GH_TOKEN_REQUIRED');
     // Strict origin allowlist prevents credentials being forwarded to another host.
     if (api !== 'https://api.github.com') throw new GithubObserverError('INVALID_API_ORIGIN');
