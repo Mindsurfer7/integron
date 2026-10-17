@@ -172,13 +172,18 @@ export class DevRoadmapStore {
   async plan(options?: {
     now?: Date; maxSnapshotAgeMs?: number; maxActivePerRepo?: number;
   }): Promise<DevPlan> {
-    const [phaseRows, dependencyRows, repoRows] = await Promise.all([
-      this.db.devPhase.findMany({
-        include: { tasks: { include: { blockers: { where: { state: 'open' } } } } }
-      }),
-      this.db.devDependency.findMany(),
-      this.db.devRepository.findMany({ include: { snapshot: true } })
-    ]);
+    // Consistent snapshot: a concurrent manifest transaction cannot make
+    // phase rows and edges look as if they came from different graph versions.
+    const [phaseRows, dependencyRows, repoRows] = await this.db.$transaction(
+      async tx => Promise.all([
+        tx.devPhase.findMany({
+          include: { tasks: { include: { blockers: { where: { state: 'open' } } } } }
+        }),
+        tx.devDependency.findMany(),
+        tx.devRepository.findMany({ include: { snapshot: true } })
+      ]),
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead }
+    );
     const phases: PhaseNode[] = phaseRows.map(phase => ({
       id: phase.id, projectSlug: phase.projectSlug, code: phase.code,
       state: phase.state as PhaseState,
