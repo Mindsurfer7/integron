@@ -1,0 +1,29 @@
+name: D5 OpenCode adapter tests
+on:
+  pull_request:
+    paths:
+      - 'packages/dev/src/agent-runner.ts'
+      - 'packages/dev/src/opencode-client.ts'
+      - 'packages/dev/src/opencode-runner.ts'
+      - 'tests/dev-agent-runner.test.ts'
+      - '.github/workflows/dev-agent-runner-ci.yml'
+  push:
+    branches: [dev]
+    paths:
+      - 'packages/dev/src/agent-runner.ts'
+      - 'packages/dev/src/opencode-client.ts'
+      - 'packages/dev/src/opencode-runner.ts'
+      - 'tests/dev-agent-runner.test.ts'
+      - '.github/workflows/dev-agent-runner-ci.yml'
+permissions:
+  contents: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - name: Offline OpenCode mock API + runner contract tests
+        run: node --experimental-strip-types --test tests/dev-agent-runner.test.ts
