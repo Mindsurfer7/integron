@@ -54,13 +54,14 @@ test('D1 registry, snapshot, stale handling and webhook dedupe persist across in
       type: 'push', payloadSha256: 'b'.repeat(64)
     };
     assert.equal(await store.recordWebhook(event), true);
-    const reopened = new DevGithubStore(new PrismaClient(), new GithubReadonlyClient('placeholder', mock));
+    const reopenedDb = new PrismaClient();
+    const reopened = new DevGithubStore(reopenedDb, new GithubReadonlyClient('placeholder', mock));
     try {
       assert.equal(await reopened.recordWebhook(event), false);
       await assert.rejects(() => reopened.recordWebhook({ ...event, payloadSha256: 'c'.repeat(64) }),
         /WEBHOOK_DELIVERY_COLLISION/);
     } finally {
-      // Client created in reopened is managed separately below in this test revision.
+      await reopenedDb.$disconnect();
     }
   } finally {
     await db.devGithubDelivery.deleteMany({ where: { repository: { fullName: target.fullName } } });
