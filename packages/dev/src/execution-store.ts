@@ -8,6 +8,7 @@ import {
   createManagedIntent, digestManagedIntent, uuidFormat, type ManagedCreateIntent
 } from './execution-intent.ts';
 import { planInExecutionTransaction } from './execution-plan.ts';
+import { createManagedPromptIntent, digestManagedPromptIntent, type ManagedPromptIntent } from './prompt-intent.ts';
 
 const KEY = /^[0-9a-f]{64}$/;
 const SESSION_ID = /^[a-zA-Z0-9_-]{1,128}$/;
@@ -226,6 +227,188 @@ export class DevExecutionStore {
     });
   }
 
+
+  /**
+   * Prepare a separately approved prompt on an acknowledged local session.
+   * No prompt text is saved or sent. Only the SHA-256 digest is persisted.
+   */
+  async preparePrompt(input: {
+    sessionId: string; requestKey: string; promptSha256: string;
+    modelID: string; maxCostCents: 0
+  }, now = new Date()): Promise<PreparedExecution> {
+    if (!uuidFormat.test(input.sessionId) || !Number.isFinite(now.getTime())) {
+      fail('INVALID_EXECUTION_IDENTITY');
+    }
+    return this.db.$transaction(async tx => {
+      await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(2026101802)::text');
+      await tx.$queryRawUnsafe(LOCK);
+      const session = await tx.devAgentSession.findUnique({
+        where: { id: input.sessionId }, include: {
+          repository: { include: { snapshot: true } },
+          task: { include: { phase: true } }
+        }
+      });
+      if (!session || session.state !== 'active' || !session.externalId ||
+          session.task.state !== 'paused' || !session.repository.enabled ||
+          session.repository.projectSlug !== session.task.phase.projectSlug) {
+        fail('PROMPT_SESSION_NOT_ACTIVE');
+      }
+      if (await tx.devBlocker.count({
+        where: { taskId: session.taskId, state: 'open' }
+      })) fail('EXECUTION_NEW_BLOCKER');
+      const initial = await tx.devExecution.findFirst({
+        where: { sessionId: session.id, action: 'create_session', state: 'acknowledged' },
+        orderBy: { createdAt: 'asc' }
+      });
+      if (!initial) fail('SESSION_CREATE_UNVERIFIED');
+      const original = createManagedIntent(initial.intent as unknown as
+        Omit<ManagedCreateIntent,'version'|'action'>);
+      if (digestManagedIntent(original) !== initial.intentDigest ||
+          original.taskId !== session.taskId ||
+          original.repository !== session.repository.fullName ||
+          original.directory !== session.directory || original.branch !== session.branch) {
+        fail('EXECUTION_INTENT_INVALID');
+      }
+      const snapshot = session.repository.snapshot;
+      const payload = snapshot?.payload;
+      if (!snapshot || snapshot.stale || !payload || typeof payload !== 'object' ||
+          Array.isArray(payload) ||
+          (payload as Record<string, unknown>).integrationSha !== original.baseSha ||
+          now.getTime() - snapshot.observedAt.getTime() > 30 * 60_000 ||
+          snapshot.observedAt.getTime() > now.getTime() + 60_000) {
+        fail('INTEGRATION_SHA_CHANGED');
+      }
+      const intent = createManagedPromptIntent({
+        taskId: session.taskId, sessionId: session.id,
+        repository: session.repository.fullName, directory: session.directory,
+        branch: session.branch, baseSha: original.baseSha,
+        externalId: session.externalId, requestKey: input.requestKey,
+        promptSha256: input.promptSha256,
+        model: { providerID: 'ollama', modelID: input.modelID },
+        maxCostCents: input.maxCostCents
+      });
+      const digest = digestManagedPromptIntent(intent);
+      const previous = await tx.devExecution.findUnique({
+        where: { taskId_requestKey: {
+          taskId: session.taskId, requestKey: intent.requestKey
+        } }
+      });
+      if (previous) {
+        if (previous.intentDigest !== digest) fail('EXECUTION_KEY_COLLISION');
+        return summary(previous);
+      }
+      const created = await tx.devExecution.create({
+        data: {
+          taskId: session.taskId, sessionId: session.id,
+          requestKey: intent.requestKey, action: 'start_task',
+          intent: intent as unknown as Prisma.InputJsonValue,
+          intentDigest: digest, promptSha256: intent.promptSha256,
+          maxCostCents: 0, state: 'pending',
+          expiresAt: new Date(now.getTime() + interval)
+        }
+      });
+      return summary(created);
+    }, { timeout: 30_000 });
+  }
+
+  async inspectPrompt(id: string): Promise<PreparedExecution & {
+    intent: ManagedPromptIntent; approvedBy: string | null
+  }> {
+    if (!uuidFormat.test(id)) fail('INVALID_EXECUTION_IDENTITY');
+    const row = await this.db.devExecution.findUnique({ where: { id } });
+    if (!row || row.action !== 'start_task') fail('PROMPT_EXECUTION_NOT_FOUND');
+    const intent = createManagedPromptIntent(row.intent as unknown as
+      Omit<ManagedPromptIntent,'version'|'action'>);
+    if (digestManagedPromptIntent(intent) !== row.intentDigest ||
+        intent.sessionId !== row.sessionId || intent.taskId !== row.taskId ||
+        row.promptSha256 !== intent.promptSha256) {
+      fail('EXECUTION_INTENT_INVALID');
+    }
+    return { ...summary(row), intent, approvedBy: row.approvedBy };
+  }
+
+  async claimPromptApproved(id: string, digest: string,
+    now = new Date()): Promise<{
+      fence: number; intent: ManagedPromptIntent
+    }> {
+    if (!uuidFormat.test(id) || !KEY.test(digest) || !Number.isFinite(now.getTime())) {
+      fail('INVALID_EXECUTION_IDENTITY');
+    }
+    return this.db.$transaction(async tx => {
+      await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(2026101802)::text');
+      await tx.$queryRawUnsafe(LOCK);
+      const row = await tx.devExecution.findUnique({
+        where: { id }, include: { session: {
+          include: { repository: { include: { snapshot: true } } }
+        } }
+      });
+      if (!row || row.action !== 'start_task' || row.state !== 'approved' ||
+          row.intentDigest !== digest || row.approvedBy !== 'local-owner' ||
+          !row.approvedAt || row.expiresAt <= now) fail('PROMPT_NOT_APPROVED');
+      const intent = createManagedPromptIntent(row.intent as unknown as
+        Omit<ManagedPromptIntent,'version'|'action'>);
+      if (digestManagedPromptIntent(intent) !== digest ||
+          row.promptSha256 !== intent.promptSha256 ||
+          intent.sessionId !== row.sessionId || intent.taskId !== row.taskId ||
+          row.session.state !== 'active' ||
+          row.session.externalId !== intent.externalId ||
+          row.session.directory !== intent.directory ||
+          row.session.branch !== intent.branch ||
+          row.session.repository.fullName !== intent.repository) {
+        fail('PROMPT_SCOPE_CHANGED');
+      }
+      const repo = row.session.repository;
+      const snap = repo.snapshot;
+      if (!repo.enabled || !snap || snap.stale ||
+          now.getTime() - snap.observedAt.getTime() > 30 * 60_000 ||
+          snap.observedAt.getTime() > now.getTime() + 60_000 ||
+          !snap.payload || typeof snap.payload !== 'object' ||
+          Array.isArray(snap.payload) ||
+          (snap.payload as Record<string, unknown>).integrationSha !== intent.baseSha) {
+        fail('INTEGRATION_SHA_CHANGED');
+      }
+      if (await tx.devBlocker.count({
+        where: { taskId: row.taskId, state: 'open' }
+      })) fail('EXECUTION_NEW_BLOCKER');
+      const changed = await tx.devExecution.updateMany({
+        where: { id, state: 'approved', fence: row.fence },
+        data: { state: 'attempting', fence: { increment: 1 }, claimedAt: now }
+      });
+      if (changed.count !== 1) fail('EXECUTION_CONCURRENT_STATE_CHANGE');
+      return { fence: row.fence + 1, intent };
+    });
+  }
+
+  async settlePromptAttempt(id: string, fence: number,
+    result: { outcome: 'acknowledged' } |
+      { outcome: 'unknown'; errorCode: string }, now = new Date()): Promise<void> {
+    if (!uuidFormat.test(id) || !Number.isInteger(fence) || fence <= 0 ||
+        !Number.isFinite(now.getTime())) fail('INVALID_EXECUTION_IDENTITY');
+    if (result.outcome === 'unknown' && !/^[A-Z0-9_]{3,70}$/.test(result.errorCode)) {
+      fail('INVALID_EXECUTION_ERROR');
+    }
+    await this.db.$transaction(async tx => {
+      await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(2026101802)::text');
+      await tx.$queryRawUnsafe(LOCK);
+      const row = await tx.devExecution.findUnique({ where: { id } });
+      if (!row || row.action !== 'start_task' || row.state !== 'attempting' ||
+          row.fence !== fence) fail('EXECUTION_FENCE_MISMATCH');
+      await tx.devExecution.update({
+        where: { id }, data: {
+          state: result.outcome, completedAt: now,
+          errorCode: result.outcome === 'unknown' ? result.errorCode : null
+        }
+      });
+      if (result.outcome === 'unknown') {
+        // Unknown provider outcome retains task scope and blocks new prompts.
+        await tx.devAgentSession.update({
+          where: { id: row.sessionId }, data: { state: 'unknown' }
+        });
+      }
+      // ACK means prompt queued, NOT finished, CI verified or merged.
+    });
+  }
+
   /** Only unattempted expired approvals may release held scope. */
   async expireUnattempted(id: string, now = new Date()): Promise<boolean> {
     if (!uuidFormat.test(id) || !Number.isFinite(now.getTime())) {
@@ -238,7 +421,13 @@ export class DevExecutionStore {
         where: { id }, include: { session: true }
       });
       if (!row || !['pending','approved'].includes(row.state) ||
-          row.expiresAt > now || row.session.state !== 'reserved') return false;
+          row.expiresAt > now) return false;
+      if (row.action === 'start_task' && row.session.state === 'active') {
+        await tx.devExecution.update({ where: { id }, data: { state: 'expired' } });
+        // Never close the active session or unpause a task for an unattempted prompt.
+        return true;
+      }
+      if (row.action !== 'create_session' || row.session.state !== 'reserved') return false;
       await tx.devExecution.update({ where: { id }, data: { state: 'expired' } });
       await tx.devAgentSession.update({
         where: { id: row.sessionId }, data: { state: 'closed' }
