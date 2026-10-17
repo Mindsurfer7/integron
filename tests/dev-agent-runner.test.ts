@@ -4,7 +4,7 @@ import { AgentRunnerError, createManualHandoff } from '../packages/dev/src/agent
 import { OpenCodeClient } from '../packages/dev/src/opencode-client.ts';
 import { OpenCodeManagedRunner } from '../packages/dev/src/opencode-runner.ts';
 
-const URL = 'http://127.0.0.1:4096';
+const BASE = 'http://127.0.0.1:4096';
 const TASK = 'task_12345678';
 const KEY = 'request_12345678';
 const REPO = 'Mindsurfer7/integron';
@@ -35,7 +35,7 @@ function fixture(status: 'idle' | 'busy' | 'retry' = 'idle') {
     return code === 204 ? new Response(null, { status: 204 }) :
       new Response(JSON.stringify(result), { status: code, headers: { 'content-type': 'application/json' } });
   }) as typeof fetch;
-  return { requests, client: new OpenCodeClient({ baseUrl: URL, password: 'secret-not-in-logs', fetcher }) };
+  return { requests, client: new OpenCodeClient({ baseUrl: BASE, password: 'secret-not-in-logs', fetcher }) };
 }
 const session = {
   provider: 'opencode' as const, externalId: SESSION,
@@ -55,7 +55,7 @@ test('reject remote hosts, paths, credentials and missing server password', () =
     assert.throws(() => new OpenCodeClient({ baseUrl, password: 'secret' }),
       errorCode('OPENCODE_LOOPBACK_ONLY'));
   }
-  assert.throws(() => new OpenCodeClient({ baseUrl: URL, password: '' }),
+  assert.throws(() => new OpenCodeClient({ baseUrl: BASE, password: '' }),
     errorCode('OPENCODE_AUTH_REQUIRED'));
 });
 
@@ -81,7 +81,7 @@ test('low-level client uses OpenCode paths and Basic auth without leaking body',
 test('read fails closed and POST transport error means UNKNOWN, no retries', async () => {
   let calls = 0;
   const client = new OpenCodeClient({
-    baseUrl: URL, password: 'secret',
+    baseUrl: BASE, password: 'secret',
     fetcher: (async () => { calls++; throw new Error('upstream secret'); }) as typeof fetch
   });
   await assert.rejects(client.getSession(SESSION), errorCode('OPENCODE_UNAVAILABLE'));
@@ -91,12 +91,12 @@ test('read fails closed and POST transport error means UNKNOWN, no retries', asy
 
 test('HTTP errors and oversized payloads are sanitized', async () => {
   const fail = new OpenCodeClient({
-    baseUrl: URL, password: 'secret',
+    baseUrl: BASE, password: 'secret',
     fetcher: (async () => new Response('TOKEN SHOULD NOT LEAK', { status: 401 })) as typeof fetch
   });
   await assert.rejects(fail.health(), errorCode('OPENCODE_AUTH_FAILED'));
   const large = new OpenCodeClient({
-    baseUrl: URL, password: 'secret',
+    baseUrl: BASE, password: 'secret',
     fetcher: (async () => new Response('x'.repeat(2_097_153))) as typeof fetch
   });
   await assert.rejects(large.health(), errorCode('OPENCODE_RESPONSE_TOO_LARGE'));
@@ -146,8 +146,9 @@ test('runner refuses wrong workspace, wrong session task, busy session', async (
   await assert.rejects(runner.startTask(session, {
     taskId: TASK, prompt: 'go', idempotencyKey: KEY
   }), errorCode('AGENT_SESSION_NOT_IDLE'));
-  await assert.rejects(runner.getStatus({ ...session, taskId: 'other_123456' }),
-    errorCode('AGENT_SESSION_SCOPE_MISMATCH').bind(null));
+  await assert.rejects(runner.startTask(session, {
+    taskId: 'other_123456', prompt: 'go', idempotencyKey: KEY
+  }), errorCode('INVALID_TASK_PROMPT'));
   const wrong = new OpenCodeManagedRunner({
     client, repository: REPO, directory: '/other/repo', authorize: async () => {}
   });
