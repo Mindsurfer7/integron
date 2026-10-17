@@ -198,6 +198,37 @@ export class DevMcpService {
       decisions };
   }
 
+  /**
+   * D5b session status is read-only and project-scoped. Exclude full worktree
+   * paths, model prompts, credentials and arbitrary provider output.
+   * An acknowledged session is never represented as a verified GitHub PR.
+   */
+  async managedSessions(principal: DevMcpPrincipal, projectSlug: string) {
+    requireDevScope(principal, projectSlug);
+    const sessions = await this.db.devAgentSession.findMany({
+      where: { task: { phase: { projectSlug } } },
+      orderBy: { createdAt: 'desc' }, take: 100,
+      select: {
+        id: true, taskId: true, provider: true, state: true, branch: true,
+        externalId: true, createdAt: true, updatedAt: true,
+        repository: { select: { fullName: true } },
+        executions: {
+          orderBy: { createdAt: 'desc' }, take: 20,
+          select: { id: true, action: true, state: true, fence: true,
+            errorCode: true, createdAt: true, claimedAt: true,
+            completedAt: true, expiresAt: true }
+        }
+      }
+    });
+    return sessions.map(session => ({
+      id: session.id, taskId: session.taskId, provider: session.provider,
+      repository: session.repository.fullName, branch: session.branch,
+      state: session.state, hasExternalSession: Boolean(session.externalId),
+      createdAt: session.createdAt, updatedAt: session.updatedAt,
+      executions: session.executions
+    }));
+  }
+
   async decisions(principal: DevMcpPrincipal, projectSlug: string) {
     requireDevScope(principal, projectSlug);
     return this.db.devDecision.findMany({
