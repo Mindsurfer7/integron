@@ -555,4 +555,5 @@ model DevArtifact {
   metadata     Json?           @db.JsonB
   @@index([sessionId, observedAt])
   @@index([repository, sha])
+  @@unique([executionId, source, kind, sha])
 }
