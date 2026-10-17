@@ -72,11 +72,30 @@ function safeSnapshot(value: unknown) {
       if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
       const pr = item as Record<string, unknown>;
       if (!Number.isInteger(pr.number)) return [];
+      const checks = Array.isArray(pr.checkRuns) ? pr.checkRuns : [];
+      const validStatus = (v: unknown): string =>
+        typeof v === 'string' && /^[a-z_]{2,30}$/.test(v) ? v : 'unknown';
       return [{
-        number: pr.number, state: typeof pr.state === 'string' ? pr.state : 'unknown',
-        base: typeof pr.base === 'string' ? pr.base : null,
+        number: pr.number,
+        state: validStatus(pr.state),
+        draft: pr.draft === true,
+        base: typeof pr.base === 'string' && /^[a-zA-Z0-9._/-]{1,120}$/.test(pr.base)
+          ? pr.base : null,
+        headSha: typeof pr.headSha === 'string' && SHA.test(pr.headSha)
+          ? pr.headSha : null,
+        mergedAt: typeof pr.mergedAt === 'string' ? pr.mergedAt : null,
+        commitStatus: validStatus(pr.commitStatus),
         checksObserved: pr.checksObserved === true,
-        checkRuns: Array.isArray(pr.checkRuns) ? pr.checkRuns.length : 0
+        checks: checks.slice(0, 100).flatMap(check => {
+          if (!check || typeof check !== 'object' || Array.isArray(check)) return [];
+          const row = check as Record<string, unknown>;
+          return [{
+            name: typeof row.name === 'string' ? row.name.slice(0, 100)
+              .replace(/[\\x00-\\x1f\\x7f]/g, '') : 'unknown',
+            status: validStatus(row.status),
+            conclusion: row.conclusion === null ? null : validStatus(row.conclusion)
+          }];
+        })
       }];
     })
   };
