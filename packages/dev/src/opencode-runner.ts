@@ -108,12 +108,15 @@ export class OpenCodeManagedRunner implements ManagedAgentRunner {
       action, taskId: session.taskId, repository: this.repository,
       directory: this.directory, externalId: session.externalId,
       idempotencyKey: request.idempotencyKey,
-      promptSha256: sha256(request.prompt)
+      promptSha256: sha256(request.prompt),
+      ...(request.model ? {
+        modelProviderId: request.model.providerID, modelId: request.model.modelID
+      } : {})
     });
     const status = await this.client.status(session.externalId);
     if (status !== 'idle') throw new AgentRunnerError('AGENT_SESSION_NOT_IDLE');
     // One outbound side effect only. After a timeout, caller must reconcile.
-    await this.client.startPrompt(session.externalId, request.prompt);
+    await this.client.startPrompt(session.externalId, request.prompt, request.model);
   }
 
   async startTask(session: AgentSession, request: AgentTaskPrompt): Promise<void> {

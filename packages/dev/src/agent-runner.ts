@@ -26,6 +26,8 @@ export interface AgentTaskPrompt {
   taskId: string;
   prompt: string;
   idempotencyKey: string;
+  /** Explicit fixed local model for D5d; no default paid-model fallback. */
+  model?: { providerID: 'ollama'; modelID: string };
 }
 
 export interface AgentStatus {
@@ -57,6 +59,8 @@ export interface AgentAuthorizationIntent {
   idempotencyKey?: string;
   /** SHA-256 of the exact prompt; checked against a durable approval in D5b. */
   promptSha256?: string;
+  modelProviderId?: string;
+  modelId?: string;
 }
 
 /**

@@ -111,6 +111,38 @@ export class OpenCodeClient {
     return value.directory;
   }
 
+  /**
+   * D5d fails closed unless the OpenCode server has a LOCAL Ollama provider
+   * and an explicitly minimal, deny-by-default permission policy.
+   * This is still not a substitute for sandboxing the OS process.
+   */
+  async assertRestrictedLocalModel(modelID: string): Promise<void> {
+    if (typeof modelID !== 'string' ||
+        !/^[a-zA-Z0-9_.:-]{1,100}$/.test(modelID)) {
+      throw new AgentRunnerError('INVALID_LOCAL_MODEL');
+    }
+    const config = await this.request('/config', 'GET');
+    if (!isObject(config)) throw new AgentRunnerError('OPENCODE_RESTRICTED_CONFIG_REQUIRED');
+    const providers = config.provider;
+    const provider = isObject(providers) ? providers.ollama : null;
+    const options = isObject(provider) ? provider.options : null;
+    const models = isObject(provider) ? provider.models : null;
+    const base = isObject(options) ? options.baseURL : null;
+    if (base !== 'http://127.0.0.1:11434/v1' &&
+        base !== 'http://localhost:11434/v1') {
+      throw new AgentRunnerError('OPENCODE_LOCAL_PROVIDER_REQUIRED');
+    }
+    if (!isObject(models) || !Object.hasOwn(models, modelID)) {
+      throw new AgentRunnerError('OPENCODE_MODEL_NOT_ALLOWLISTED');
+    }
+    const perms = config.permission;
+    if (!isObject(perms) || perms['*'] !== 'deny' ||
+        perms.edit !== 'allow' || perms.read !== 'allow' ||
+        perms.bash !== 'deny' || perms.external_directory !== 'deny') {
+      throw new AgentRunnerError('OPENCODE_RESTRICTED_CONFIG_REQUIRED');
+    }
+  }
+
   async createSession(title: string): Promise<string> {
     if (!validText(title, 200)) throw new AgentRunnerError('INVALID_TITLE');
     const value = await this.request('/session', 'POST', { title });
@@ -126,10 +158,16 @@ export class OpenCodeClient {
     }
   }
 
-  async startPrompt(id: string, prompt: string): Promise<void> {
+  async startPrompt(id: string, prompt: string,
+    model?: { providerID: 'ollama'; modelID: string }): Promise<void> {
     safeSessionId(id);
     if (!typeofStringPrompt(prompt)) throw new AgentRunnerError('INVALID_PROMPT');
+    if (model && (model.providerID !== 'ollama' ||
+        !/^[a-zA-Z0-9_.:-]{1,100}$/.test(model.modelID))) {
+      throw new AgentRunnerError('INVALID_LOCAL_MODEL');
+    }
     const result = await this.request('/session/' + id + '/prompt_async', 'POST', {
+      ...(model ? { model: { providerID: 'ollama', modelID: model.modelID } } : {}),
       parts: [{ type: 'text', text: prompt }]
     });
     if (result !== null) throw new AgentRunnerError('OPENCODE_INVALID_RESPONSE');
