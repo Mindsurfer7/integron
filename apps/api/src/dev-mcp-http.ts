@@ -1,14 +1,10 @@
 /**
- * D3 localhost-only MCP Streamable HTTP endpoint. NOT a public ChatGPT app.
- * Remote deployment requires an actual OAuth 2.1 resource server and HTTPS;
- * never tunnel this local bearer-token endpoint to the public internet.
+ * D3 authenticated local MCP. Never expose it to public internet:
+ * production ChatGPT access requires OAuth 2.1, HTTPS and proper scopes.
  */
 import { PrismaClient } from '@prisma/client';
-import { createMcpHandler } from '@modelcontextprotocol/server';
-import { toNodeHandler } from '@modelcontextprotocol/node';
-import { createMcpFastifyApp } from '@modelcontextprotocol/fastify';
-import { createDevMcpAuth, localMcpHostAllowed } from '../../../packages/dev/src/mcp-auth.ts';
-import { createDevMcpServer } from '../../../packages/dev/src/mcp-server.ts';
+import { createDevMcpAuth } from '../../../packages/dev/src/mcp-auth.ts';
+import { buildDevMcpHttpApp } from './dev-mcp-app.ts';
 
 if (process.env.RUNTIME_PROFILE !== 'postgres' || !process.env.DATABASE_URL) {
   throw new Error('MCP requires RUNTIME_PROFILE=postgres and DATABASE_URL');
@@ -26,42 +22,7 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invali
 
 const db = new PrismaClient();
 await db.$connect();
-const app = createMcpFastifyApp();
-app.addHook('onRequest', async (request, reply) => {
-  if (!localMcpHostAllowed(request.headers.host, request.headers.origin)) {
-    return reply.code(403).send({ error: 'LOCAL_ONLY' });
-  }
-});
-app.addHook('onSend', async (_request, reply, payload) => {
-  reply.header('Cache-Control', 'no-store');
-  reply.header('X-Content-Type-Options', 'nosniff');
-  return payload;
-});
-app.all('/mcp', async (request, reply) => {
-  if (request.method !== 'POST') {
-    return reply.code(405).header('Allow', 'POST').send({ error: 'METHOD_NOT_ALLOWED' });
-  }
-  // Bearer only; no cookies or browser sessions, and never trust X-Forwarded-*.
-  const principal = auth.authorize(request.headers.authorization);
-  if (!principal) {
-    return reply.code(401).header('WWW-Authenticate', 'Bearer realm="integron-dev-local"')
-      .send({ error: 'UNAUTHORIZED' });
-  }
-  // Stateless per-request SDK handler, captured principal; no cross-request
-  // global mutable identity. SDK parses MCP JSON-RPC and validates each tool.
-  const mcp = createMcpHandler(() => createDevMcpServer(db, principal), {
-    responseMode: 'json',
-    maxSubscriptions: 0,
-    maxRequestBodySize: 8_192
-  });
-  const handler = toNodeHandler(mcp);
-  reply.raw.setHeader('Cache-Control', 'no-store');
-  reply.raw.setHeader('X-Content-Type-Options', 'nosniff');
-  reply.hijack();
-  try { await handler(request.raw, reply.raw, request.body); }
-  finally { await mcp.close(); }
-});
-
+const app = buildDevMcpHttpApp(db, auth);
 let closing = false;
 async function shutdown() {
   if (closing) return;
