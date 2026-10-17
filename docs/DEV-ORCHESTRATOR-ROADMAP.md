@@ -1,6 +1,8 @@
 # Development Orchestrator — architecture and roadmap
 
-Status: proposed, documentation only. Target: Integron `dev`. This module is independent of P2–P7 messaging and voice acceptance.
+Status: D0 ADR and D1 read-only observer implemented in feature branch; runtime acceptance pending CI and credentialed smoke test. Target: Integron `dev`. This module is independent of P2–P7 messaging and voice acceptance.
+
+D0 architecture decision: [DEV-ORCHESTRATOR-D0-ADR.md](DEV-ORCHESTRATOR-D0-ADR.md).
 
 ## Goal
 
