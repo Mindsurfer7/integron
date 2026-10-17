@@ -12,6 +12,17 @@ const scopedWrite: DevMcpPrincipal = {
   actorId: 'local-owner', role: 'write', allowedProjects: ['flowboard']
 };
 const fakeDb = {
+  devArtifact: {
+    findMany: async () => [{
+      id: 'artifact-1', sessionId: 'session-1', executionId: 'execution-1',
+      kind: 'pull_request', repository: 'Qonbex/qonbaq-flowboard',
+      sha: 'a'.repeat(40),
+      reference: 'https://github.com/Qonbex/qonbaq-flowboard/pull/42',
+      verifiedAt: new Date(), observedAt: new Date(),
+      metadata: { prNumber: 42, state: 'open', checksObserved: true,
+        prompt: 'malicious-instruction-should-not-leak' }
+    }]
+  },
   devAgentSession: {
     findMany: async () => [{
       id: 'local-session-id', taskId: 'task-1', provider: 'opencode',
@@ -72,6 +83,7 @@ test('actual MCP tool registry separates read and write identities', async () =>
   assert.ok(readNames.includes('integron_dev_projects'));
   assert.ok(readNames.includes('integron_dev_available_tasks'));
   assert.ok(readNames.includes('integron_dev_sessions'));
+  assert.ok(readNames.includes('integron_dev_artifacts'));
   assert.ok(!readNames.includes('integron_dev_request_action'));
   assert.ok(!readNames.includes('integron_dev_apply_approved'));
 
@@ -118,4 +130,21 @@ test('D5 managed sessions tool is read-only, project-scoped and redacts provider
   });
   assert.equal(denied.result.result?.isError, true);
   assert.ok(denied.result.result.content[0].text.includes('PROJECT_FORBIDDEN'));
+});
+
+test('D5 GitHub artifacts MCP read is scoped and strips untrusted metadata', async () => {
+  const called = await rpc(scopedRead, 'tools/call', {
+    name: 'integron_dev_artifacts', arguments: { projectSlug: 'flowboard' }
+  });
+  assert.equal(called.response.status, 200, JSON.stringify(called.result));
+  const data = JSON.parse(called.result.result.content[0].text);
+  assert.equal(data.length, 1);
+  assert.equal(data[0].sha, 'a'.repeat(40));
+  assert.equal(data[0].checksObserved, true);
+  assert.equal(data[0].phaseAccepted, false);
+  assert.equal(JSON.stringify(data).includes('malicious-instruction-should-not-leak'), false);
+  const denied = await rpc(scopedRead, 'tools/call', {
+    name: 'integron_dev_artifacts', arguments: { projectSlug: 'qonbaq' }
+  });
+  assert.equal(denied.result.result.isError, true);
 });

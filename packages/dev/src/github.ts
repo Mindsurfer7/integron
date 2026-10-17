@@ -77,6 +77,24 @@ function validateBranch(branch: string): string {
 }
 export type HttpFetch = (input: string, init?: RequestInit) => Promise<Response>;
 
+/** D5c read-only PR evidence. This is not a merge/phase-acceptance decision. */
+export interface ManagedPrEvidence {
+  repository: string;
+  number: number;
+  url: string;
+  headBranch: string;
+  headRepo: string;
+  headSha: string;
+  baseBranch: string;
+  state: 'open' | 'closed';
+  draft: boolean;
+  mergedAt: string | null;
+  checksObserved: boolean;
+  checkRuns: GithubCheck[];
+  commitStatus: string;
+  observedAt: string;
+}
+
 export class GithubReadonlyClient {
   private readonly token: string;
   private readonly http: HttpFetch;
@@ -191,4 +209,64 @@ export class GithubReadonlyClient {
       checkCoverage
     };
   }
+  /**
+   * Fetch exact live PR head/branch/check metadata for D5c reconciliation.
+   * Never accepts arbitrary remote URLs and never writes to GitHub.
+   */
+  async managedPrEvidence(repository: string, prNumber: number,
+    now = new Date()): Promise<ManagedPrEvidence> {
+    const name = validateRepo(repository);
+    if (!Number.isSafeInteger(prNumber) || prNumber <= 0 || prNumber > 10_000_000 ||
+        !Number.isFinite(now.getTime())) {
+      throw new GithubObserverError('GH_INVALID_PR_REFERENCE');
+    }
+    const root = '/repos/' + name;
+    const data = record(await this.read(root + '/pulls/' + prNumber));
+    const head = record(data.head), base = record(data.base);
+    const headRepository = record(head.repo);
+    const headSha = str(head.sha).toLowerCase();
+    const headBranch = validateBranch(str(head.ref));
+    const baseBranch = validateBranch(str(base.ref));
+    const remoteRepo = validateRepo(str(headRepository.full_name));
+    const state = str(data.state);
+    if (data.number !== prNumber || !/^[a-f0-9]{40}$/.test(headSha) ||
+        (state !== 'open' && state !== 'closed')) {
+      throw new GithubObserverError('GH_INVALID_RESPONSE');
+    }
+    const url = 'https://github.com/' + name + '/pull/' + prNumber;
+    if (data.html_url !== url) throw new GithubObserverError('GH_PR_REPOSITORY_MISMATCH');
+    if (remoteRepo !== name) throw new GithubObserverError('GH_FORK_PR_UNSUPPORTED');
+    // Explicit branch HEAD check; a stale PR head is NOT accepted as evidence.
+    const branch = record(await this.read(root + '/branches/' + encodeURIComponent(headBranch)));
+    if (str(record(branch.commit).sha).toLowerCase() !== headSha) {
+      throw new GithubObserverError('GH_PR_HEAD_CHANGED');
+    }
+    const rawChecks = record(await this.read(
+      root + '/commits/' + headSha + '/check-runs?per_page=100'
+    ));
+    const all = array(rawChecks.check_runs);
+    const count = rawChecks.total_count;
+    const checksObserved = typeof count === 'number' && Number.isInteger(count) &&
+      count > 0 && count === all.length && all.length <= 100;
+    const checkRuns: GithubCheck[] = all.slice(0, 100).map(row => {
+      const x = record(row);
+      return {
+        name: str(x.name).slice(0, 150),
+        status: str(x.status),
+        conclusion: optionalStr(x.conclusion),
+        url: optionalStr(x.html_url)
+      };
+    });
+    const statuses = record(await this.read(root + '/commits/' + headSha + '/status'));
+    const commitStatus = str(statuses.state) || 'unknown';
+    return {
+      repository: name, number: prNumber, url, headBranch,
+      headRepo: remoteRepo, headSha, baseBranch,
+      state: state as 'open' | 'closed',
+      draft: data.draft === true, mergedAt: optionalStr(data.merged_at),
+      checksObserved, checkRuns, commitStatus,
+      observedAt: now.toISOString()
+    };
+  }
+
 }

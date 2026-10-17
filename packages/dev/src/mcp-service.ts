@@ -203,6 +203,41 @@ export class DevMcpService {
    * paths, model prompts, credentials and arbitrary provider output.
    * An acknowledged session is never represented as a verified GitHub PR.
    */
+  /** GitHub-observed PR provenance only. Does not imply CI/phase acceptance. */
+  async managedArtifacts(principal: DevMcpPrincipal, projectSlug: string) {
+    requireDevScope(principal, projectSlug);
+    const rows = await this.db.devArtifact.findMany({
+      where: { source: 'github_observer',
+        session: { task: { phase: { projectSlug } } } },
+      orderBy: { observedAt: 'desc' }, take: 100,
+      select: {
+        id: true, sessionId: true, executionId: true, kind: true,
+        repository: true, sha: true, reference: true,
+        verifiedAt: true, observedAt: true, metadata: true
+      }
+    });
+    return rows.map(row => {
+      const meta = row.metadata && typeof row.metadata === 'object' &&
+        !Array.isArray(row.metadata) ? row.metadata as Record<string, unknown> : {};
+      const prNumber = typeof meta.prNumber === 'number' &&
+        Number.isSafeInteger(meta.prNumber) && meta.prNumber > 0 ?
+        meta.prNumber : null;
+      // Never forward arbitrary data stored in metadata as agent instructions.
+      const expected = prNumber && row.kind === 'pull_request' ?
+        'https://github.com/' + row.repository + '/pull/' + prNumber : null;
+      return {
+        id: row.id, sessionId: row.sessionId, executionId: row.executionId,
+        kind: row.kind, repository: row.repository, sha: row.sha,
+        url: row.reference === expected ? expected : null,
+        prNumber, observedAt: row.observedAt, verifiedAt: row.verifiedAt,
+        state: meta.state === 'open' || meta.state === 'closed'
+          ? meta.state : 'unknown',
+        draft: meta.draft === true, checksObserved: meta.checksObserved === true,
+        ciAccepted: false, phaseAccepted: false
+      };
+    });
+  }
+
   async managedSessions(principal: DevMcpPrincipal, projectSlug: string) {
     requireDevScope(principal, projectSlug);
     const sessions = await this.db.devAgentSession.findMany({
