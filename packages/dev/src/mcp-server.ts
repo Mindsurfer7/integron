@@ -70,6 +70,12 @@ export function createDevMcpServer(db: PrismaClient, principal: DevMcpPrincipal)
     annotations: { readOnlyHint: true }
   }, async ({ projectSlug }) => safely(() => api.availableTasks(principal, projectSlug)));
 
+  server.registerTool('integron_dev_artifacts', {
+    description: 'Read independently GitHub-observed PR artifacts for one authorized project. Observed SHA is not CI or phase acceptance; no GitHub writes.',
+    inputSchema: z.object({ projectSlug: project }),
+    annotations: { readOnlyHint: true }
+  }, async ({ projectSlug }) => safely(() => api.managedArtifacts(principal, projectSlug)));
+
   server.registerTool('integron_dev_sessions', {
     description: 'Read D5 managed agent sessions and reconciliation status for one authorized project. No agent start/resume, remote session secrets, prompts or GitHub merge rights.',
     inputSchema: z.object({ projectSlug: project }),
