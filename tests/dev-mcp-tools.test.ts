@@ -23,7 +23,19 @@ async function rpc(principal: DevMcpPrincipal, method: string,
   params?: Record<string, unknown>) {
   const handler = createMcpHandler(() => createDevMcpServer(fakeDb, principal),
     { responseMode: 'json' });
-  const body = { jsonrpc: '2.0', id: 1, method, ...(params ? { params } : {}) };
+  // The 2026 MCP protocol requires a per-request envelope; headers alone
+  // are not enough. Exercise the actual modern SDK path, not legacy fallback.
+  const body = {
+    jsonrpc: '2.0', id: 1, method,
+    params: {
+      ...(params ?? {}),
+      _meta: {
+        'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+        'io.modelcontextprotocol/clientInfo': { name: 'integron-test', version: '1.0.0' },
+        'io.modelcontextprotocol/clientCapabilities': {}
+      }
+    }
+  };
   const headers: Record<string, string> = {
     'content-type': 'application/json',
     accept: 'application/json, text/event-stream',
@@ -45,7 +57,7 @@ async function rpc(principal: DevMcpPrincipal, method: string,
 
 test('actual MCP tool registry separates read and write identities', async () => {
   const read = await rpc(scopedRead, 'tools/list');
-  assert.equal(read.response.status, 200);
+  assert.equal(read.response.status, 200, JSON.stringify(read.result));
   const readNames: string[] = read.result.result.tools.map((tool: {name: string}) => tool.name);
   assert.ok(readNames.includes('integron_dev_projects'));
   assert.ok(readNames.includes('integron_dev_available_tasks'));
@@ -53,7 +65,7 @@ test('actual MCP tool registry separates read and write identities', async () =>
   assert.ok(!readNames.includes('integron_dev_apply_approved'));
 
   const write = await rpc(scopedWrite, 'tools/list');
-  assert.equal(write.response.status, 200);
+  assert.equal(write.response.status, 200, JSON.stringify(write.result));
   const writeNames: string[] = write.result.result.tools.map((tool: {name: string}) => tool.name);
   assert.ok(writeNames.includes('integron_dev_request_action'));
   assert.ok(writeNames.includes('integron_dev_apply_approved'));
@@ -62,7 +74,7 @@ test('actual MCP tool registry separates read and write identities', async () =>
 test('MCP tools/call returns project catalog without raw provider payloads', async () => {
   const called = await rpc(scopedRead, 'tools/call',
     { name: 'integron_dev_projects', arguments: {} });
-  assert.equal(called.response.status, 200);
+  assert.equal(called.response.status, 200, JSON.stringify(called.result));
   const toolResult = called.result.result;
   assert.equal(toolResult.isError, undefined);
   const rows = JSON.parse(toolResult.content[0].text);
