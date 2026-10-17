@@ -93,6 +93,7 @@ export class GithubReadonlyClient {
   private async read(path: string): Promise<unknown> {
     const response = await this.http(this.api + path, {
       method: 'GET',
+      redirect: 'error',
       headers: {
         Authorization: 'Bearer ' + this.token,
         Accept: 'application/vnd.github+json',
