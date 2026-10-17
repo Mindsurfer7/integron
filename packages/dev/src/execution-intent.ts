@@ -10,6 +10,7 @@ export interface ManagedCreateIntent {
   repository: string;
   directory: string;
   branch: string;
+  baseSha: string;
   title: string;
   requestKey: string;
   maxCostCents: number;
@@ -33,6 +34,9 @@ export function createManagedIntent(input: Omit<ManagedCreateIntent, 'version'|'
       input.branch.endsWith('.lock') || input.branch.split('/').some(p => p.startsWith('.'))) {
     throw new AgentRunnerError('INVALID_BRANCH');
   }
+  if (typeof input.baseSha !== 'string' || !/^[0-9a-f]{40}$/.test(input.baseSha)) {
+    throw new AgentRunnerError('INVALID_INTEGRATION_SHA');
+  }
   if (typeof input.title !== 'string' || !input.title.trim() || input.title.length > 200 ||
       /[\u0000-\u001f\u007f]/.test(input.title)) {
     throw new AgentRunnerError('INVALID_EXECUTION_TITLE');
@@ -42,7 +46,7 @@ export function createManagedIntent(input: Omit<ManagedCreateIntent, 'version'|'
   return Object.freeze({
     version: 1, action: 'create_session', taskId: input.taskId,
     repository: input.repository, directory: input.directory,
-    branch: input.branch, title: input.title, requestKey: input.requestKey,
+    branch: input.branch, baseSha: input.baseSha, title: input.title, requestKey: input.requestKey,
     maxCostCents: input.maxCostCents
   });
 }

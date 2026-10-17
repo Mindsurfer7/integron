@@ -10,7 +10,7 @@ const intent = {
   version: 1 as const, action: 'create_session' as const,
   taskId, repository: 'Qonbex/qonbaq',
   directory: '/tmp/integron-d5b-session',
-  branch: 'feat/d5b-session',
+  branch: 'feat/d5b-session', baseSha: 'a'.repeat(40),
   title: 'Safe session only', requestKey: 'request_123456789',
   maxCostCents: 0
 };

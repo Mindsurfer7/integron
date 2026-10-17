@@ -63,7 +63,7 @@ test('D5b PostgreSQL: concurrent idempotency, fenced claims, unknown/expired out
     });
     const input = {
       taskId: id, repository: fullName, directory: '/tmp/d5b-' + code,
-      branch, title: 'D5 integration', requestKey: key, maxCostCents: 0
+      branch, baseSha: integrationSha, title: 'D5 integration', requestKey: key, maxCostCents: 0
     };
     const [first, second] = await Promise.all([
       store.prepareCreate(input, now), store.prepareCreate(input, now)

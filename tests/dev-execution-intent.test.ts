@@ -8,7 +8,7 @@ import {
 const valid = () => ({
   taskId: randomUUID(), repository: 'Qonbex/qonbaq',
   directory: '/tmp/integron-agent/task-1',
-  branch: 'feat/d5-task-1', title: 'Review backend adapter',
+  branch: 'feat/d5-task-1', baseSha: 'a'.repeat(40), title: 'Review backend adapter',
   requestKey: 'request_123456789', maxCostCents: 0
 });
 
@@ -21,7 +21,7 @@ test('D5b intent digest binds workspace, branch, task, cost and request key', ()
   assert.match(digest, /^[0-9a-f]{64}$/);
   for (const patch of [
     { branch: 'feat/other' }, { directory: '/tmp/integron-agent/task-2' },
-    { maxCostCents: 10 }, { requestKey: 'request_987654321' },
+    { maxCostCents: 10 }, { baseSha: 'b'.repeat(40) }, { requestKey: 'request_987654321' },
     { title: 'Another instruction' }, { taskId: randomUUID() }
   ]) {
     assert.notEqual(digestManagedIntent(createManagedIntent({ ...input, ...patch })), digest);
@@ -36,7 +36,7 @@ test('D5b refuses foreign repo, traversal, bad branch, broken budget and malform
     { branch: 'feat/../unsafe' }, { title: '\nunsafe' },
     { taskId: 'not-a-uuid' }, { requestKey: 'short' },
     { maxCostCents: -1 }, { maxCostCents: 100001 },
-    { maxCostCents: 1.25 }
+    { maxCostCents: 1.25 }, { baseSha: 'invalid' }
   ]) {
     assert.throws(() => createManagedIntent({ ...base, ...patch }));
   }

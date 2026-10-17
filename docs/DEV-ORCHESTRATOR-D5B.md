@@ -5,7 +5,7 @@
 ## What works
 
 - D5b PostgreSQL schema: \`DevAgentSession\`, \`DevExecution\`, \`DevArtifact\`. The migration is additive and ordered after D3; D3 \`DevDecision\` and immutable \`DevEvent\` are preserved.
-- A locally prepared, immutable, SHA-256-bound \`create_session\` envelope includes task UUID, allowlisted repository, exact worktree directory, Git branch, title, request key and requested max spend. No secrets or prompts are stored.
+- A locally prepared, immutable, SHA-256-bound \`create_session\` envelope includes task UUID, allowlisted repository, exact worktree directory, Git branch, observed integration-branch SHA, title, request key and requested max spend. No secrets or prompts are stored.
 - \`DevExecutionStore.prepareCreate\` checks the D2 readiness plan, recent D1 repository observation, repository/project ownership, single-repository scopes, blockers and dependency evidence in an atomic PostgreSQL transaction. It reserves one task and moves it into D2 \`paused\` (not \`running\`, \`verified\` or \`completed\`).
 - Shared advisory lock order D2→D5b coordinates D3 blocker application, D2 manifest edits and D5b reservation. Replayed request keys return the same pending execution; collisions fail.
 - Owner approval is separate from the write-token MCP path. A local TTY CLI must display the complete exact intent, check the digest and require typed confirmation. No remote model tool can approve, claim or run a session.
@@ -51,13 +51,14 @@ Example reviewed intent file, stored **outside the Git repository**:
   "repository": "Qonbex/qonbaq",
   "directory": "/absolute/path/to/dedicated/worktree",
   "branch": "feat/approved-change",
+  "baseSha": "REPLACE-WITH-40-HEX-D1-INTEGRATION-SHA",
   "title": "Review and create an empty coding session",
   "requestKey": "unique_request_key_123456",
   "maxCostCents": 0
 }
 \`\`\`
 
-The D1 observer must have a fresh integration-branch snapshot; task prerequisites and scopes must be registered via D2. A prepared intent expires after 10 minutes if it was never attempted. Expire only unattempted stale reservations with \`--expire <execution-id>\`; once a provider call has been attempted, reconcile rather than expire it.
+The `baseSha` supplied by the operator must match D1's fresh integration-branch snapshot at reservation and claim time; a changed branch invalidates dispatch. The D1 observer must have a fresh integration-branch snapshot; task prerequisites and scopes must be registered via D2. A prepared intent expires after 10 minutes if it was never attempted. Expire only unattempted stale reservations with \`--expire <execution-id>\`; once a provider call has been attempted, reconcile rather than expire it.
 
 ## Automated acceptance and what remains
 

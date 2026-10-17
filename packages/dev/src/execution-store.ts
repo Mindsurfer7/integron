@@ -62,6 +62,16 @@ export class DevExecutionStore {
           repository.projectSlug !== task.phase.projectSlug) {
         fail('EXECUTION_SCOPE_DENIED');
       }
+      const snapshot = await tx.devGithubSnapshot.findUnique({
+        where: { repositoryId: repository.id }
+      });
+      if (!snapshot || snapshot.stale || snapshot.observedAt > new Date(now.getTime() + 60_000) ||
+          now.getTime() - snapshot.observedAt.getTime() > 30 * 60_000 ||
+          !snapshot.payload || typeof snapshot.payload !== 'object' ||
+          Array.isArray(snapshot.payload) ||
+          (snapshot.payload as Record<string, unknown>).integrationSha !== intent.baseSha) {
+        fail('INTEGRATION_SHA_CHANGED');
+      }
       const scopes = Array.isArray(task.scopes) ? task.scopes : [];
       if (scopes.length !== 1 || !isObject(scopes[0]) ||
           scopes[0].repo !== intent.repository ||
@@ -151,9 +161,26 @@ export class DevExecutionStore {
           !row.approvedAt || row.approvedBy !== 'local-owner') fail('EXECUTION_NOT_APPROVED');
       if (row.expiresAt <= now) fail('EXECUTION_EXPIRED');
       if (row.session.state !== 'reserved') fail('AGENT_SESSION_NOT_RESERVED');
+      const openBlockers = await tx.devBlocker.count({ where: { taskId: row.taskId, state: 'open' } });
+      if (openBlockers !== 0) fail('EXECUTION_NEW_BLOCKER');
+      const repo = await tx.devRepository.findUnique({
+        where: { id: row.session.repositoryId }, include: { snapshot: true }
+      });
+      const current = repo?.snapshot;
+      if (!repo?.enabled || !current || current.stale ||
+          now.getTime() - current.observedAt.getTime() > 30 * 60_000 ||
+          current.observedAt.getTime() > now.getTime() + 60_000) {
+        fail('EXECUTION_REPOSITORY_STALE');
+      }
       const intent = createManagedIntent(row.intent as unknown as Omit<ManagedCreateIntent,'version'|'action'>);
       if (digestManagedIntent(intent) !== row.intentDigest ||
           intent.taskId !== row.taskId) fail('EXECUTION_INTENT_INVALID');
+      const snapshotPayload = current.payload;
+      if (!snapshotPayload || typeof snapshotPayload !== 'object' ||
+          Array.isArray(snapshotPayload) ||
+          (snapshotPayload as Record<string, unknown>).integrationSha !== intent.baseSha) {
+        fail('INTEGRATION_SHA_CHANGED');
+      }
       const changed = await tx.devExecution.updateMany({
         where: { id, state: 'approved', fence: row.fence },
         data: { state: 'attempting', fence: { increment: 1 }, claimedAt: now }
