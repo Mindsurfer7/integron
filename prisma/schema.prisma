@@ -334,3 +334,48 @@ model WorkflowSipCall {
   @@index([state, createdAt])
   @@index([deadlineAt, stopRequestedAt])
 }
+
+
+// Development orchestration D1: strictly separate from outreach WorkflowRun.
+// GitHub observation cannot authorize code edits, merges, deployments or outreach.
+model DevProject {
+  slug         String          @id
+  name         String
+  repositories DevRepository[]
+}
+
+model DevRepository {
+  id                String             @id @default(uuid()) @db.Uuid
+  projectSlug       String
+  project           DevProject         @relation(fields: [projectSlug], references: [slug])
+  fullName          String             @unique
+  integrationBranch String
+  enabled           Boolean            @default(true)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  snapshot          DevGithubSnapshot?
+  deliveries        DevGithubDelivery[]
+  @@index([projectSlug])
+}
+
+model DevGithubSnapshot {
+  repositoryId String        @id @db.Uuid
+  repository   DevRepository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  payload      Json          @db.JsonB
+  observedAt   DateTime
+  stale        Boolean       @default(false)
+  errorCode    String?
+  updatedAt    DateTime      @updatedAt
+  @@index([stale, observedAt])
+}
+
+model DevGithubDelivery {
+  id            String        @id @default(uuid()) @db.Uuid
+  repositoryId  String        @db.Uuid
+  repository    DevRepository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  deliveryId    String        @unique
+  eventType     String
+  payloadSha256 String
+  receivedAt    DateTime      @default(now())
+  @@index([repositoryId, receivedAt])
+}
